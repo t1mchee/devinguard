@@ -1,6 +1,6 @@
 """Devin API client.
 
-Wraps the Devin v3 REST API for session management.
+Supports both v1 (personal API keys) and v3 (service user keys) endpoints.
 https://docs.devin.ai/api-reference/overview
 """
 
@@ -24,10 +24,12 @@ class DevinAPIError(Exception):
 
 
 class DevinAPIClient:
-    """Client for the Devin v3 API.
+    """Client for the Devin API.
 
     Handles authentication, session creation, polling, messaging, and termination.
-    Uses the v3 organization-scoped endpoints.
+    Automatically selects v1 or v3 endpoints based on the API key format:
+      - Personal keys (apk_user_*): use /v1/sessions
+      - Service user keys (cog_*): use /v3/organizations/sessions
     """
 
     def __init__(
@@ -39,6 +41,7 @@ class DevinAPIClient:
         self._api_key = api_key or settings.devin_api_key
         self._org_id = org_id or settings.devin_org_id
         self._base_url = (base_url or settings.devin_api_base_url).rstrip("/")
+        self._is_personal_key = self._api_key.startswith("apk_")
         self._client = httpx.AsyncClient(
             base_url=self._base_url,
             headers={
@@ -50,13 +53,12 @@ class DevinAPIClient:
 
     @property
     def _sessions_url(self) -> str:
-        return f"/v3/organizations/{self._org_id}/sessions"
+        if self._is_personal_key:
+            return "/v1/sessions"
+        return "/v3/organizations/sessions"
 
     async def create_session(self, request: CreateSessionRequest) -> dict:
-        """Create a new Devin session.
-
-        POST /v3/organizations/{org_id}/sessions
-        """
+        """Create a new Devin session."""
         response = await self._client.post(
             self._sessions_url,
             json=request.model_dump(exclude_none=True),
@@ -67,19 +69,13 @@ class DevinAPIClient:
         return data
 
     async def get_session(self, session_id: str) -> dict:
-        """Get session details.
-
-        GET /v3/organizations/{org_id}/sessions/{session_id}
-        """
+        """Get session details."""
         response = await self._client.get(f"{self._sessions_url}/{session_id}")
         self._check_response(response)
         return response.json()
 
     async def send_message(self, session_id: str, message: str) -> dict:
-        """Send a message to an active session.
-
-        POST /v3/organizations/{org_id}/sessions/{session_id}/message
-        """
+        """Send a message to an active session."""
         request = SendMessageRequest(message=message)
         response = await self._client.post(
             f"{self._sessions_url}/{session_id}/message",
@@ -89,10 +85,7 @@ class DevinAPIClient:
         return response.json()
 
     async def terminate_session(self, session_id: str) -> dict:
-        """Terminate an active session.
-
-        DELETE /v3/organizations/{org_id}/sessions/{session_id}
-        """
+        """Terminate an active session."""
         response = await self._client.delete(f"{self._sessions_url}/{session_id}")
         self._check_response(response)
         return response.json()
@@ -103,11 +96,8 @@ class DevinAPIClient:
         status: Optional[str] = None,
         tags: Optional[list[str]] = None,
     ) -> dict:
-        """List sessions with optional filters.
-
-        GET /v3/organizations/{org_id}/sessions
-        """
-        params: dict = {"first": limit}
+        """List sessions with optional filters."""
+        params: dict = {"limit": limit}
         if status:
             params["status"] = status
         if tags:
