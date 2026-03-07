@@ -53,9 +53,17 @@ def normalize_pagerduty(payload: dict) -> AlertEvent:
     body = data.get("body", {})
     details = body.get("details", {}) if isinstance(body, dict) else {}
 
-    error_class = details.get("error_class", "UnknownError")
-    error_message = details.get("error_message", data.get("title", "No message"))
-    stack_trace = details.get("stack_trace")
+    # Handle details as string (PagerDuty sometimes sends plain text details)
+    if isinstance(details, str):
+        # Parse error class from title or details text
+        title = data.get("title", "")
+        error_class = title.split(":")[0].strip() if ":" in title else "UnknownError"
+        error_message = data.get("title", details)
+        stack_trace = details if "\n" in details else None
+    else:
+        error_class = details.get("error_class", "UnknownError")
+        error_message = details.get("error_message", data.get("title", "No message"))
+        stack_trace = details.get("stack_trace")
 
     # Map urgency to severity
     urgency = data.get("urgency", "low")
