@@ -37,18 +37,56 @@ class TriageResult(BaseModel):
 
 
 # Stage 1: Rule-based fast-path patterns
+#
+# Two tiers:
+#   Tier 1 — Explicit error classes (high confidence, narrow match)
+#   Tier 2 — Contextual signals from message text (moderate confidence, broader match)
+
 _INFRA_PATTERNS = [
-    (re.compile(r"OOMKilled|out of memory|memory limit", re.I), "INFRASTRUCTURE", 0.95,
-     "Memory/OOM issue — requires scaling, not code changes"),
-    (re.compile(r"disk full|no space left|inode exhaustion", re.I), "INFRASTRUCTURE", 0.95,
-     "Disk space issue — storage provisioning needed"),
-    (re.compile(r"connection refused|ECONNREFUSED|dns.*fail", re.I), "INFRASTRUCTURE", 0.90,
-     "Network/DNS failure — service discovery or connectivity issue"),
-    (re.compile(r"certificate.*expired|ssl.*error|tls.*handshake", re.I), "INFRASTRUCTURE", 0.85,
-     "TLS/certificate issue — cert renewal needed"),
+    # Tier 1: Explicit error classes
+    (re.compile(r"OOMKilled|out of memory|memory limit|MemoryError|OutOfMemoryError", re.I),
+     "INFRASTRUCTURE", 0.95, "Memory/OOM issue — requires scaling, not code changes"),
+    (re.compile(r"disk full|no space left|inode exhaustion|ENOSPC", re.I),
+     "INFRASTRUCTURE", 0.95, "Disk space issue — storage provisioning needed"),
+    (re.compile(r"connection refused|ECONNREFUSED|dns.*fail|ENOTFOUND", re.I),
+     "INFRASTRUCTURE", 0.90, "Network/DNS failure — service discovery or connectivity issue"),
+    (re.compile(r"certificate.*expired|ssl.*error|tls.*handshake|CertificateError", re.I),
+     "INFRASTRUCTURE", 0.85, "TLS/certificate issue — cert renewal needed"),
+    # Tier 2: Contextual infra signals
+    (re.compile(r"kubelet|kube-proxy|cgroup|node\s+pressure|evict", re.I),
+     "INFRASTRUCTURE", 0.85, "Kubernetes node/kubelet infrastructure issue"),
+    (re.compile(r"pod.*restart|CrashLoopBackOff|ImagePullBackOff|pod.*status", re.I),
+     "INFRASTRUCTURE", 0.85, "Kubernetes pod lifecycle issue"),
+    (re.compile(r"resource\s*(?:accounting|quota|limit)|cpu\s*(?:manager|set|throttl)", re.I),
+     "INFRASTRUCTURE", 0.80, "Resource management/scheduling issue"),
+    (re.compile(r"volume.*mount|persistent.*volume|storage.*class|PVC", re.I),
+     "INFRASTRUCTURE", 0.80, "Storage/volume provisioning issue"),
+    (re.compile(r"docker|container.*runtime|containerd|runc", re.I),
+     "INFRASTRUCTURE", 0.80, "Container runtime infrastructure issue"),
+    (re.compile(r"terraform|provisioning|infra.*config|cloud.*config", re.I),
+     "INFRASTRUCTURE", 0.80, "Infrastructure-as-code / provisioning issue"),
+    (re.compile(r"scaling|autoscal|replica.*set|horizontal.*pod|HPA", re.I),
+     "INFRASTRUCTURE", 0.80, "Auto-scaling infrastructure issue"),
+    (re.compile(r"network.*polic|ingress.*controller|load\s*balancer|proxy.*error", re.I),
+     "INFRASTRUCTURE", 0.80, "Network/ingress infrastructure issue"),
+    (re.compile(r"liveness.*probe|readiness.*probe|health.*check.*fail", re.I),
+     "INFRASTRUCTURE", 0.80, "Health check / probe infrastructure issue"),
+    (re.compile(r"service\s*mesh|sidecar|envoy|istio", re.I),
+     "INFRASTRUCTURE", 0.80, "Service mesh infrastructure issue"),
+    (re.compile(
+        r"deploy.*(?:fail|crash|error|pipeline)"
+        r"|rollout.*(?:fail|stuck)|rollback.*fail|canary.*fail",
+        re.I,
+    ), "INFRASTRUCTURE", 0.75, "Deployment/rollout infrastructure issue"),
+    (re.compile(
+        r"(?:request|connection|network)\s*(?:timeout|timed?\s*out)"
+        r"|deadline exceeded|ETIMEDOUT",
+        re.I,
+    ), "INFRASTRUCTURE", 0.75, "Timeout — likely network or resource constraint"),
 ]
 
 _CODE_PATTERNS = [
+    # Tier 1: Explicit error classes
     (re.compile(r"TypeError|ReferenceError|null pointer|NullPointerException", re.I),
      "CODE_LEVEL", 0.85, "Classic application bug with clear error type"),
     (re.compile(r"AssertionError|assertion.*fail|validation.*fail", re.I),
@@ -59,6 +97,68 @@ _CODE_PATTERNS = [
      "CODE_LEVEL", 0.90, "Syntax-level code error"),
     (re.compile(r"ImportError|ModuleNotFoundError|Cannot find module", re.I),
      "CODE_LEVEL", 0.85, "Missing import/module — likely code or dependency issue"),
+    (re.compile(r"AttributeError|KeyError|IndexError|ValueError", re.I),
+     "CODE_LEVEL", 0.85, "Python runtime error — code-level bug"),
+    (re.compile(r"NameError|UnboundLocalError|RecursionError", re.I),
+     "CODE_LEVEL", 0.85, "Python scope/recursion error — code-level bug"),
+    (re.compile(r"NoMethodError|ArgumentError|NameError", re.I),
+     "CODE_LEVEL", 0.80, "Runtime method/argument error — code-level bug"),
+    # Tier 2: Contextual code signals
+    (re.compile(
+        r"(?:fix|bug|patch)\s+(?:in|for|where)?\s*"
+        r"(?:crash|throw|error|exception)\s+(?:in|at|from|when)",
+        re.I,
+    ), "CODE_LEVEL", 0.75, "Bug-fix context — likely application code issue"),
+    (re.compile(
+        r"(?:crash|throw|exception)\s+(?:when|if|during|after)"
+        r"\s+(?:call|invok|pars|send|receiv|process|handl|rend)",
+        re.I,
+    ), "CODE_LEVEL", 0.75, "Conditional error — application-level bug pattern"),
+    (re.compile(
+        r"(?:wrong|incorrect|unexpected|invalid)"
+        r"\s+(?:result|output|value|response|behavior)",
+        re.I,
+    ), "CODE_LEVEL", 0.75, "Incorrect behavior — logic bug in application code"),
+    (re.compile(
+        r"(?:null|nil|undefined|None)"
+        r"\s+(?:check|reference|pointer|dereference|access)",
+        re.I,
+    ), "CODE_LEVEL", 0.80, "Null reference — code-level bug"),
+    (re.compile(r"(?:race\s*condition|deadlock|concurrency)\s*(?:bug|issue|error|fix)", re.I),
+     "CODE_LEVEL", 0.80, "Concurrency bug in application code"),
+    (re.compile(r"(?:regression|broke|breaking)\s+(?:change|behavior|test|feature)", re.I),
+     "CODE_LEVEL", 0.75, "Regression — code change introduced a bug"),
+    (re.compile(r"(?:panic|segfault|SIGSEGV|abort|core dump)", re.I),
+     "CODE_LEVEL", 0.80, "Process crash — likely code-level bug"),
+    (re.compile(r"(?:off.by.one|overflow|underflow|truncat|round)", re.I),
+     "CODE_LEVEL", 0.75, "Numeric/boundary error — code-level bug"),
+    (re.compile(r"(?:missing|forgot|omitted)\s+(?:null|check|validation|guard|handler)", re.I),
+     "CODE_LEVEL", 0.80, "Missing guard/validation — code-level fix needed"),
+    (re.compile(r"(?:response|return|output).*(?:wrong|empty|missing|malformed|corrupt)", re.I),
+     "CODE_LEVEL", 0.75, "Incorrect output — application logic bug"),
+    (re.compile(r"fails?\s+(?:with|when|on|during|after|for|silently)", re.I),
+     "CODE_LEVEL", 0.70, "Failure condition — likely application-level bug"),
+    (re.compile(
+        r"(?:doesn't|does not|don't|do not)"
+        r"\s+(?:work|handle|parse|validate|return|send)",
+        re.I,
+    ), "CODE_LEVEL", 0.70, "Missing functionality — application code issue"),
+    (re.compile(r"(?:throw|throws|thrown)\s+(?:an?\s+)?(?:error|exception)", re.I),
+     "CODE_LEVEL", 0.75, "Throws error — application code issue"),
+    (re.compile(
+        r"(?:not\s+(?:working|passing|handling|setting"
+        r"|returning|called|triggered|executed))",
+        re.I,
+    ), "CODE_LEVEL", 0.70, "Broken behavior — application code issue"),
+    (re.compile(r"(?:crash|crashes|crashed|crashing)\s", re.I),
+     "CODE_LEVEL", 0.75, "Application crash — code-level bug"),
+    (re.compile(r"(?:undefined|null|nil|None)\b.*(?:error|exception|crash|fail)", re.I),
+     "CODE_LEVEL", 0.80, "Null/undefined causing error — code-level bug"),
+    (re.compile(
+        r"(?:called|executed|invoked|triggered)"
+        r"\s+(?:twice|multiple|again|before|after)",
+        re.I,
+    ), "CODE_LEVEL", 0.75, "Incorrect execution order — code-level bug"),
 ]
 
 
