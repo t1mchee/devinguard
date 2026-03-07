@@ -1,15 +1,21 @@
 """Dashboard API endpoints.
 
-Provides metrics and investigation data for the operator dashboard.
+Provides metrics and investigation data for the operator dashboard,
+including real-time activity feed via SSE.
 """
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Optional
 
 from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
+
+from app.events.feed import activity_feed
 
 if TYPE_CHECKING:
     from app.metrics.store import MetricsStore
@@ -122,3 +128,57 @@ async def label_investigation(
 
     await store.update_investigation_outcome(investigation_id, **kwargs)
     return {"status": "updated", "investigation_id": investigation_id, "updates": kwargs}
+
+
+@router.get("/events")
+async def get_recent_events(limit: int = 50) -> list[dict]:
+    """Return recent activity feed events."""
+    events = activity_feed.recent(limit)
+    return [e.model_dump() for e in events]
+
+
+@router.get("/events/stream")
+async def event_stream(request: Request) -> StreamingResponse:
+    """SSE endpoint — streams real-time pipeline events to the dashboard."""
+    queue = activity_feed.subscribe()
+
+    async def generate():
+        try:
+            while True:
+                if await request.is_disconnected():
+                    break
+                try:
+                    event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                    data = json.dumps(event.model_dump())
+                    yield f"data: {data}\n\n"
+                except asyncio.TimeoutError:
+                    yield ": keepalive\n\n"
+        finally:
+            activity_feed.unsubscribe(queue)
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/live-investigations")
+async def live_investigations(request: Request) -> list[dict]:
+    """Return in-memory investigations from the dispatcher (live status)."""
+    from app.api.webhooks import get_dispatcher
+
+    dispatcher = get_dispatcher(request)
+    investigations = dispatcher.list_investigations()
+    result = []
+    for inv in investigations:
+        d = inv.model_dump()
+        # Add session URL for active sessions
+        if inv.session_id:
+            # Strip "devin-" prefix if present for URL
+            sid = inv.session_id
+            if sid.startswith("devin-"):
+                sid = sid[6:]
+            d["session_url"] = f"https://app.devin.ai/sessions/{sid}"
+        result.append(d)
+    return result

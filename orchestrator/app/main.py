@@ -54,7 +54,10 @@ app.add_middleware(
 app.include_router(webhooks_router, prefix="/api")
 app.include_router(dashboard_router, prefix="/api/dashboard")
 
-# Serve dashboard static files
+# Serve dashboard static assets (JS/CSS)
+app.mount("/static", StaticFiles(directory="app/dashboard/static"), name="static")
+
+# Serve dashboard HTML
 app.mount("/dashboard", StaticFiles(directory="app/dashboard", html=True), name="dashboard")
 
 

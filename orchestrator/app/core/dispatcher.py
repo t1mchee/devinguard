@@ -27,6 +27,7 @@ from app.core.prompt_builder import build_investigation_prompt
 from app.core.triage import TriageResult, classify_alert
 from app.dedup.fingerprint import generate_dedup_key
 from app.dedup.store import BaseDedupStore, InMemoryDedupStore
+from app.events.feed import FeedEvent, activity_feed
 from app.metrics.store import MetricsStore
 from app.models.alert import AlertEvent, EnrichedContext, Investigation
 from app.models.devin import CreateSessionRequest
@@ -69,6 +70,15 @@ class InvestigationDispatcher:
         dedup_key = generate_dedup_key(alert)
         logger.info(f"Alert received: {alert.service_name}/{alert.error_class} → dedup={dedup_key}")
 
+        # Emit: alert received
+        activity_feed.emit(FeedEvent(
+            event_type="alert_received",
+            service_name=alert.service_name,
+            title=f"Alert received: {alert.error_class}",
+            detail=f"{alert.error_class}: {alert.error_message[:120]}",
+            metadata={"severity": alert.severity, "source": alert.source},
+        ))
+
         # Step 2: Check dedup
         is_duplicate, existing_inv_id = await self._dedup.check_and_set(dedup_key)
         if is_duplicate and existing_inv_id:
@@ -77,6 +87,13 @@ class InvestigationDispatcher:
             if investigation:
                 investigation.alert_count += 1
             await self._dedup.extend_ttl(dedup_key)
+            activity_feed.emit(FeedEvent(
+                event_type="dedup_hit",
+                investigation_id=existing_inv_id,
+                service_name=alert.service_name,
+                title="Duplicate alert deduplicated",
+                detail=f"Attached to existing investigation {existing_inv_id}",
+            ))
             return {
                 "action": "deduplicated",
                 "investigation_id": existing_inv_id,
@@ -107,6 +124,20 @@ class InvestigationDispatcher:
             f"dispatch={triage_result.should_dispatch_to_devin})"
         )
 
+        # Emit: triage complete
+        activity_feed.emit(FeedEvent(
+            event_type="triage_complete",
+            investigation_id=investigation_id,
+            service_name=alert.service_name,
+            title=f"Triage: {triage_result.classification}",
+            detail=f"Confidence {triage_result.confidence:.0%} — {triage_result.reasoning}",
+            metadata={
+                "classification": triage_result.classification,
+                "confidence": triage_result.confidence,
+                "dispatch": triage_result.should_dispatch_to_devin,
+            },
+        ))
+
         # Record metrics
         if self._metrics:
             await self._metrics.record_investigation(investigation)
@@ -116,6 +147,13 @@ class InvestigationDispatcher:
             return await self._dispatch_to_devin(alert, context, investigation, triage_result)
 
         # Route to human
+        activity_feed.emit(FeedEvent(
+            event_type="escalated",
+            investigation_id=investigation_id,
+            service_name=alert.service_name,
+            title="Escalated to human",
+            detail=f"{triage_result.classification} — not dispatching to Devin",
+        ))
         return {
             "action": "escalated_to_human",
             "investigation_id": investigation_id,
@@ -151,6 +189,19 @@ class InvestigationDispatcher:
             logger.info(
                 f"Devin session created: {session_data['session_id']} — {session_data.get('url')}"
             )
+
+            # Emit: dispatched to Devin
+            activity_feed.emit(FeedEvent(
+                event_type="dispatched",
+                investigation_id=investigation.investigation_id,
+                service_name=alert.service_name,
+                title="Dispatched to Devin",
+                detail=f"Session {session_data['session_id'][:12]}...",
+                metadata={
+                    "session_id": session_data["session_id"],
+                    "session_url": session_data.get("url", ""),
+                },
+            ))
 
             return {
                 "action": "dispatched_to_devin",
@@ -206,6 +257,21 @@ class InvestigationDispatcher:
                 f"outcome={investigation.session_outcome}, "
                 f"ACUs={investigation.acus_consumed}"
             )
+
+            # Emit: session complete
+            ev_type = "pr_opened" if investigation.session_outcome == "fix_pr" else "session_complete"
+            activity_feed.emit(FeedEvent(
+                event_type=ev_type,
+                investigation_id=investigation_id,
+                service_name=investigation.service_name,
+                title="PR opened" if ev_type == "pr_opened" else "Investigation complete",
+                detail=investigation.pr_url or f"Outcome: {investigation.session_outcome}",
+                metadata={
+                    "outcome": investigation.session_outcome,
+                    "acus": investigation.acus_consumed,
+                    "pr_url": investigation.pr_url or "",
+                },
+            ))
 
             if self._metrics:
                 await self._metrics.update_investigation_outcome(
