@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DevinGuard — Operator Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0f1117; color: #e1e4e8; padding: 24px; }
+        h1 { font-size: 24px; margin-bottom: 8px; color: #fff; }
+        .subtitle { color: #8b949e; margin-bottom: 24px; font-size: 14px; }
+        .filters { display: flex; gap: 12px; margin-bottom: 24px; align-items: center; }
+        .filters select { background: #21262d; color: #e1e4e8; border: 1px solid #30363d; padding: 6px 12px; border-radius: 6px; font-size: 14px; }
+        .filters label { color: #8b949e; font-size: 13px; }
+        .cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+        .card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+        .card .label { font-size: 12px; color: #8b949e; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 8px; }
+        .card .value { font-size: 32px; font-weight: 600; color: #fff; }
+        .card .value.green { color: #3fb950; }
+        .card .value.amber { color: #d29922; }
+        .card .value.red { color: #f85149; }
+        .card .unit { font-size: 14px; color: #8b949e; margin-left: 4px; }
+        .charts { display: grid; grid-template-columns: 2fr 1fr; gap: 16px; margin-bottom: 24px; }
+        .chart-box { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 20px; }
+        .chart-box h3 { font-size: 14px; color: #8b949e; margin-bottom: 16px; }
+        .chart-box canvas { max-height: 250px; }
+        table { width: 100%; border-collapse: collapse; background: #161b22; border: 1px solid #30363d; border-radius: 8px; overflow: hidden; }
+        th { text-align: left; padding: 12px 16px; font-size: 12px; color: #8b949e; text-transform: uppercase; border-bottom: 1px solid #30363d; }
+        td { padding: 10px 16px; font-size: 13px; border-bottom: 1px solid #21262d; }
+        .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+        .badge.fix_pr { background: #0d4429; color: #3fb950; }
+        .badge.hypothesis { background: #3d2e00; color: #d29922; }
+        .badge.inconclusive { background: #3d1e1e; color: #f85149; }
+        .badge.false_dispatch { background: #272730; color: #8b949e; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        .refresh-note { color: #484f58; font-size: 11px; text-align: right; margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <h1>DevinGuard Dashboard</h1>
+    <p class="subtitle">Autonomous Incident Response — Operator View</p>
+
+    <div class="filters">
+        <label>Period:</label>
+        <select id="period-select">
+            <option value="day">Last 24h</option>
+            <option value="week" selected>Last 7 days</option>
+            <option value="month">Last 30 days</option>
+        </select>
+        <label>Service:</label>
+        <select id="service-select">
+            <option value="">All services</option>
+            <option value="payment-service">payment-service</option>
+        </select>
+    </div>
+
+    <div class="cards">
+        <div class="card">
+            <div class="label">Total Investigations</div>
+            <div class="value" id="total-inv">0</div>
+        </div>
+        <div class="card">
+            <div class="label">Devin Success Rate</div>
+            <div class="value green" id="success-rate">—</div>
+        </div>
+        <div class="card">
+            <div class="label">ACU Spend</div>
+            <div class="value amber" id="acu-spend">$0</div>
+        </div>
+        <div class="card">
+            <div class="label">Dispatched to Devin</div>
+            <div class="value" id="dispatched">0</div>
+        </div>
+    </div>
+
+    <div class="charts">
+        <div class="chart-box">
+            <h3>ACU Spend (Daily)</h3>
+            <canvas id="acu-chart"></canvas>
+        </div>
+        <div class="chart-box">
+            <h3>Outcome Distribution</h3>
+            <canvas id="outcome-chart"></canvas>
+        </div>
+    </div>
+
+    <div class="chart-box" style="margin-bottom: 24px;">
+        <h3>Triage Accuracy (Weekly)</h3>
+        <canvas id="accuracy-chart"></canvas>
+    </div>
+
+    <p class="refresh-note">Auto-refreshes every 60s</p>
+    <table>
+        <thead>
+            <tr>
+                <th>Time</th>
+                <th>Service</th>
+                <th>Classification</th>
+                <th>Outcome</th>
+                <th>ACUs</th>
+                <th>PR</th>
+            </tr>
+        </thead>
+        <tbody id="investigations-body">
+            <tr><td colspan="6" style="text-align:center;color:#484f58;">No investigations yet</td></tr>
+        </tbody>
+    </table>
+
+    <script>
+        const API_BASE = '/api/dashboard';
+        let acuChart, outcomeChart, accuracyChart;
+
+        function getFilters() {
+            return {
+                period: document.getElementById('period-select').value,
+                service: document.getElementById('service-select').value,
+            };
+        }
+
+        async function fetchJSON(url) {
+            const res = await fetch(url);
+            return res.json();
+        }
+
+        async function refreshDashboard() {
+            const { period, service } = getFilters();
+            const qs = service ? `&service=${service}` : '';
+
+            // Summary cards
+            const summary = await fetchJSON(`${API_BASE}/summary?period=${period}${qs}`);
+            document.getElementById('total-inv').textContent = summary.total_investigations || 0;
+            document.getElementById('dispatched').textContent = summary.dispatched_to_devin || 0;
+            document.getElementById('acu-spend').textContent = `$${(summary.total_acu_cost_usd || 0).toFixed(2)}`;
+
+            const outcomes = summary.outcomes || {};
+            const total = (outcomes.fix_pr || 0) + (outcomes.hypothesis || 0) + (outcomes.inconclusive || 0);
+            const successCount = (outcomes.fix_pr || 0) + (outcomes.hypothesis || 0);
+            const rate = total > 0 ? Math.round((successCount / total) * 100) : 0;
+            const rateEl = document.getElementById('success-rate');
+            rateEl.textContent = total > 0 ? `${rate}%` : '—';
+            rateEl.className = `value ${rate >= 70 ? 'green' : rate >= 40 ? 'amber' : 'red'}`;
+
+            // ACU chart
+            const days = period === 'day' ? 1 : period === 'week' ? 7 : 30;
+            const acuData = await fetchJSON(`${API_BASE}/acu-spend?days=${days}${qs}`);
+            updateAcuChart(acuData);
+
+            // Outcome chart
+            updateOutcomeChart(outcomes);
+
+            // Accuracy chart
+            const accData = await fetchJSON(`${API_BASE}/triage-accuracy?weeks=12${qs}`);
+            updateAccuracyChart(accData);
+
+            // Investigations table
+            const invs = await fetchJSON(`${API_BASE}/investigations?limit=20${qs}`);
+            updateTable(invs);
+        }
+
+        function updateAcuChart(data) {
+            const labels = data.map(d => d.date || '');
+            const values = data.map(d => d.cost_usd || 0);
+            if (acuChart) acuChart.destroy();
+            acuChart = new Chart(document.getElementById('acu-chart'), {
+                type: 'bar',
+                data: { labels, datasets: [{ label: 'Cost (USD)', data: values, backgroundColor: '#d29922', borderRadius: 4 }] },
+                options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }, x: { ticks: { color: '#8b949e', maxTicksLimit: 10 }, grid: { display: false } } } }
+            });
+        }
+
+        function updateOutcomeChart(outcomes) {
+            const labels = ['Fix PR', 'Hypothesis', 'Inconclusive', 'False Dispatch'];
+            const values = [outcomes.fix_pr || 0, outcomes.hypothesis || 0, outcomes.inconclusive || 0, outcomes.false_dispatch || 0];
+            const colors = ['#3fb950', '#d29922', '#f85149', '#8b949e'];
+            if (outcomeChart) outcomeChart.destroy();
+            outcomeChart = new Chart(document.getElementById('outcome-chart'), {
+                type: 'doughnut',
+                data: { labels, datasets: [{ data: values, backgroundColor: colors, borderWidth: 0 }] },
+                options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { color: '#8b949e', padding: 12 } } } }
+            });
+        }
+
+        function updateAccuracyChart(data) {
+            const labels = data.map(d => d.week_start ? d.week_start.slice(5, 10) : '');
+            const precision = data.map(d => d.precision != null ? (d.precision * 100).toFixed(1) : null);
+            const recall = data.map(d => d.recall != null ? (d.recall * 100).toFixed(1) : null);
+            if (accuracyChart) accuracyChart.destroy();
+            accuracyChart = new Chart(document.getElementById('accuracy-chart'), {
+                type: 'line',
+                data: {
+                    labels,
+                    datasets: [
+                        { label: 'Precision %', data: precision, borderColor: '#3fb950', tension: 0.3, spanGaps: true },
+                        { label: 'Recall %', data: recall, borderColor: '#58a6ff', tension: 0.3, spanGaps: true },
+                    ]
+                },
+                options: { responsive: true, plugins: { legend: { labels: { color: '#8b949e' } } }, scales: { y: { min: 0, max: 100, ticks: { color: '#8b949e' }, grid: { color: '#21262d' } }, x: { ticks: { color: '#8b949e' }, grid: { display: false } } } }
+            });
+        }
+
+        function updateTable(investigations) {
+            const tbody = document.getElementById('investigations-body');
+            if (!investigations.length) {
+                tbody.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#484f58;">No investigations yet</td></tr>';
+                return;
+            }
+            tbody.innerHTML = investigations.map(inv => {
+                const time = inv.created_at ? new Date(inv.created_at).toLocaleString() : '—';
+                const outcome = inv.session_outcome || '—';
+                const badgeClass = inv.session_outcome || '';
+                const pr = inv.pr_url ? `<a href="${inv.pr_url}" target="_blank">View PR</a>` : '—';
+                const acus = inv.acus_consumed != null ? inv.acus_consumed.toFixed(1) : '—';
+                return `<tr>
+                    <td>${time}</td>
+                    <td>${inv.service_name || '—'}</td>
+                    <td>${inv.triage_classification || '—'}</td>
+                    <td><span class="badge ${badgeClass}">${outcome}</span></td>
+                    <td>${acus}</td>
+                    <td>${pr}</td>
+                </tr>`;
+            }).join('');
+        }
+
+        // Event listeners
+        document.getElementById('period-select').addEventListener('change', refreshDashboard);
+        document.getElementById('service-select').addEventListener('change', refreshDashboard);
+
+        // Initial load + auto-refresh
+        refreshDashboard();
+        setInterval(refreshDashboard, 60000);
+    </script>
+</body>
+</html>

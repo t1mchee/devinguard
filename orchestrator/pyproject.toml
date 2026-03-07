@@ -1,0 +1,41 @@
+[tool.poetry]
+name = "devinguard"
+version = "0.1.0"
+description = "DevinGuard: Autonomous Incident Response Orchestrator"
+authors = ["Tim"]
+readme = "README.md"
+packages = [{include = "app"}]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = "^0.115.0"
+uvicorn = {extras = ["standard"], version = "^0.34.0"}
+pydantic = "^2.10.0"
+pydantic-settings = "^2.7.0"
+httpx = "^0.28.0"
+redis = {extras = ["hiredis"], version = "^5.2.0"}
+cachetools = "^5.5.0"
+anthropic = "^0.42.0"
+python-dotenv = "^1.0.1"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.0"
+pytest-asyncio = "^0.24.0"
+pytest-cov = "^6.0.0"
+ruff = "^0.8.0"
+fakeredis = "^2.26.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
