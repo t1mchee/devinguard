@@ -28,8 +28,8 @@ class Settings(BaseSettings):
     slack_bot_token: str = ""
     slack_incident_channel: str = ""
 
-    # Anthropic (triage classifier)
-    anthropic_api_key: str = ""
+    # OpenAI (triage classifier)
+    openai_api_key: str = ""
 
     # Redis
     redis_url: str = "redis://localhost:6379/0"

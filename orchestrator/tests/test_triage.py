@@ -89,6 +89,6 @@ async def test_triage_ambiguous_no_llm():
         error_class="PerformanceWarning",
         error_message="Latency spike detected (p99 > 2000ms)",
     )
-    result = await classify_alert(alert, anthropic_client=None)
+    result = await classify_alert(alert, openai_client=None)
     assert result.classification == "AMBIGUOUS"
     assert result.should_dispatch_to_devin is False

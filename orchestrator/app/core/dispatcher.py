@@ -20,7 +20,7 @@ from typing import TYPE_CHECKING, Optional
 from app.config import settings
 
 if TYPE_CHECKING:
-    import anthropic
+    from openai import AsyncOpenAI
 from app.core.devin_client import DevinAPIClient
 from app.core.enrichment import EnrichmentEngine
 from app.core.prompt_builder import build_investigation_prompt
@@ -46,7 +46,7 @@ class InvestigationDispatcher:
         devin_client: Optional[DevinAPIClient] = None,
         enrichment_engine: Optional[EnrichmentEngine] = None,
         metrics_store: Optional[MetricsStore] = None,
-        anthropic_client: Optional[anthropic.AsyncAnthropic] = None,
+        openai_client: Optional[AsyncOpenAI] = None,
     ):
         self._dedup = dedup_store or InMemoryDedupStore(
             default_ttl_seconds=settings.dedup_window_seconds
@@ -54,7 +54,7 @@ class InvestigationDispatcher:
         self._devin = devin_client or DevinAPIClient()
         self._enrichment = enrichment_engine or EnrichmentEngine()
         self._metrics = metrics_store
-        self._anthropic = anthropic_client
+        self._openai = openai_client
 
         # Active investigations
         self._investigations: dict[str, Investigation] = {}
@@ -97,7 +97,7 @@ class InvestigationDispatcher:
         context = await self._enrichment.enrich(alert)
 
         # Step 5: Triage
-        triage_result = await classify_alert(alert, context, self._anthropic)
+        triage_result = await classify_alert(alert, context, self._openai)
         investigation.triage_classification = triage_result.classification
         investigation.triage_confidence = triage_result.confidence
 

@@ -22,7 +22,7 @@ from pydantic import BaseModel
 from app.models.alert import AlertEvent, EnrichedContext
 
 if TYPE_CHECKING:
-    import anthropic
+    from openai import AsyncOpenAI
 
 logger = logging.getLogger(__name__)
 
@@ -219,18 +219,21 @@ Respond with JSON only: {{"classification": "...", "confidence": 0.0-1.0, "reaso
 async def _llm_classify(
     alert: AlertEvent,
     context: Optional[EnrichedContext],
-    anthropic_client: anthropic.AsyncAnthropic,
+    openai_client: AsyncOpenAI,
 ) -> TriageResult:
     """Stage 2: LLM-assisted classification for ambiguous cases."""
     prompt = _build_llm_prompt(alert, context)
 
     try:
-        response = await anthropic_client.messages.create(
-            model="claude-3-5-haiku-20241022",
+        response = await openai_client.chat.completions.create(
+            model="gpt-4o-mini",
             max_tokens=256,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": "You are a production alert classifier."},
+                {"role": "user", "content": prompt},
+            ],
         )
-        text = response.content[0].text.strip()
+        text = (response.choices[0].message.content or "").strip()
 
         # Parse JSON response
         # Handle potential markdown code blocks
@@ -268,7 +271,7 @@ async def _llm_classify(
 async def classify_alert(
     alert: AlertEvent,
     context: Optional[EnrichedContext] = None,
-    anthropic_client: Optional[anthropic.AsyncAnthropic] = None,
+    openai_client: Optional[AsyncOpenAI] = None,
 ) -> TriageResult:
     """Classify an alert through the two-stage triage pipeline.
 
@@ -278,8 +281,8 @@ async def classify_alert(
     Args:
         alert: The normalized alert to classify.
         context: Optional enriched context for better classification.
-        anthropic_client: Optional Anthropic client for Stage 2. If None, ambiguous
-                         alerts are routed to human by default.
+        openai_client: Optional OpenAI client for Stage 2. If None, ambiguous
+                      alerts are routed to human by default.
 
     Returns:
         TriageResult with classification, confidence, and dispatch decision.
@@ -293,9 +296,9 @@ async def classify_alert(
         )
         return result
 
-    # Stage 2: LLM-assisted
-    if anthropic_client is not None:
-        result = await _llm_classify(alert, context, anthropic_client)
+    # Stage 2: LLM-assisted (OpenAI)
+    if openai_client is not None:
+        result = await _llm_classify(alert, context, openai_client)
         logger.info(
             f"Triage (LLM): {alert.service_name} → "
             f"{result.classification} ({result.confidence:.2f}) — {result.reasoning}"
@@ -303,7 +306,9 @@ async def classify_alert(
         return result
 
     # Fallback: no LLM available, route to human
-    logger.info(f"Triage (fallback): {alert.service_name} → AMBIGUOUS (no LLM available)")
+    logger.info(
+        f"Triage (fallback): {alert.service_name} → AMBIGUOUS (no LLM available)"
+    )
     return TriageResult(
         classification="AMBIGUOUS",
         confidence=0.0,

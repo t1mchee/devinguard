@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.api.dashboard import router as dashboard_router
 from app.api.webhooks import router as webhooks_router
+from app.config import settings
 from app.metrics.store import MetricsStore
 
 
@@ -19,6 +20,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     metrics_store = MetricsStore()
     await metrics_store.initialize()
     app.state.metrics_store = metrics_store
+
+    # Initialize OpenAI client if key is configured
+    openai_client = None
+    if settings.openai_api_key:
+        from openai import AsyncOpenAI
+
+        openai_client = AsyncOpenAI(api_key=settings.openai_api_key)
+    app.state.openai_client = openai_client
+
     yield
     # Cleanup
     await metrics_store.close()

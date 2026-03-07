@@ -143,7 +143,7 @@ async def demo_triage(alert: AlertEvent) -> None:
     """Step 3: Demonstrate triage classification."""
     banner("STEP 3: Triage (Rule-Based)")
 
-    result = await classify_alert(alert, context=None, anthropic_client=None)
+    result = await classify_alert(alert, context=None, openai_client=None)
     print(f"Classification: {result.classification}")
     print(f"Confidence:     {result.confidence:.2f}")
     print(f"Dispatch:       {result.should_dispatch_to_devin}")
@@ -161,7 +161,7 @@ async def demo_triage(alert: AlertEvent) -> None:
         timestamp=datetime.utcnow(),
     )
     infra_result = await classify_alert(
-        infra_alert, context=None, anthropic_client=None
+        infra_alert, context=None, openai_client=None
     )
     print(f"Classification: {infra_result.classification}")
     print(f"Confidence:     {infra_result.confidence:.2f}")

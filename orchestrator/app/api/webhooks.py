@@ -26,10 +26,20 @@ router = APIRouter(tags=["webhooks"])
 _dispatcher: Optional[InvestigationDispatcher] = None
 
 
-def get_dispatcher() -> InvestigationDispatcher:
+def get_dispatcher(request: Optional[Request] = None) -> InvestigationDispatcher:
     global _dispatcher
     if _dispatcher is None:
-        _dispatcher = InvestigationDispatcher()
+        metrics_store = None
+        openai_client = None
+        if request:
+            if hasattr(request.app.state, "metrics_store"):
+                metrics_store = request.app.state.metrics_store
+            if hasattr(request.app.state, "openai_client"):
+                openai_client = request.app.state.openai_client
+        _dispatcher = InvestigationDispatcher(
+            metrics_store=metrics_store,
+            openai_client=openai_client,
+        )
     return _dispatcher
 
 
@@ -45,7 +55,7 @@ async def pagerduty_webhook(request: Request, background_tasks: BackgroundTasks)
         logger.warning(f"PagerDuty normalization failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    return await _process_alert(alert, background_tasks)
+    return await _process_alert(alert, request, background_tasks)
 
 
 @router.post("/webhooks/sentry")
@@ -60,7 +70,7 @@ async def sentry_webhook(request: Request, background_tasks: BackgroundTasks) ->
         logger.warning(f"Sentry normalization failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    return await _process_alert(alert, background_tasks)
+    return await _process_alert(alert, request, background_tasks)
 
 
 @router.post("/webhooks/custom")
@@ -75,22 +85,28 @@ async def custom_webhook(request: Request, background_tasks: BackgroundTasks) ->
         logger.warning(f"Custom normalization failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
-    return await _process_alert(alert, background_tasks)
+    return await _process_alert(alert, request, background_tasks)
 
 
 @router.post("/webhooks/test")
-async def test_webhook(alert: AlertEvent, background_tasks: BackgroundTasks) -> dict:
+async def test_webhook(
+    alert: AlertEvent,
+    request: Request,
+    background_tasks: BackgroundTasks,
+) -> dict:
     """Test endpoint that accepts a pre-normalized AlertEvent directly.
 
     Useful for demos and integration testing without real PagerDuty/Sentry.
     """
     logger.info(f"Received test alert: {alert.service_name}/{alert.error_class}")
-    return await _process_alert(alert, background_tasks)
+    return await _process_alert(alert, request, background_tasks)
 
 
-async def _process_alert(alert: AlertEvent, background_tasks: BackgroundTasks) -> dict:
+async def _process_alert(
+    alert: AlertEvent, request: Request, background_tasks: BackgroundTasks,
+) -> dict:
     """Process a normalized alert through the pipeline."""
-    dispatcher = get_dispatcher()
+    dispatcher = get_dispatcher(request)
     result = await dispatcher.handle_alert(alert)
 
     # If dispatched to Devin, start monitoring in background
@@ -102,17 +118,17 @@ async def _process_alert(alert: AlertEvent, background_tasks: BackgroundTasks) -
 
 
 @router.get("/investigations")
-async def list_investigations() -> list[dict]:
+async def list_investigations(request: Request) -> list[dict]:
     """List all active and completed investigations."""
-    dispatcher = get_dispatcher()
+    dispatcher = get_dispatcher(request)
     investigations = dispatcher.list_investigations()
     return [inv.model_dump() for inv in investigations]
 
 
 @router.get("/investigations/{investigation_id}")
-async def get_investigation(investigation_id: str) -> dict:
+async def get_investigation(investigation_id: str, request: Request) -> dict:
     """Get details of a specific investigation."""
-    dispatcher = get_dispatcher()
+    dispatcher = get_dispatcher(request)
     investigation = dispatcher.get_investigation(investigation_id)
     if not investigation:
         raise HTTPException(status_code=404, detail="Investigation not found")
