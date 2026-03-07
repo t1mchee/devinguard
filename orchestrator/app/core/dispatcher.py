@@ -107,13 +107,17 @@ class InvestigationDispatcher:
             f"dispatch={triage_result.should_dispatch_to_devin})"
         )
 
-        # Record metrics
-        if self._metrics:
-            await self._metrics.record_investigation(investigation)
-
         # Step 6: Dispatch or escalate
         if triage_result.should_dispatch_to_devin:
-            return await self._dispatch_to_devin(alert, context, investigation, triage_result)
+            result = await self._dispatch_to_devin(alert, context, investigation, triage_result)
+            # Record metrics AFTER dispatch so session_id is populated
+            if self._metrics:
+                await self._metrics.record_investigation(investigation)
+            return result
+
+        # Record metrics for escalated (non-dispatched) alerts
+        if self._metrics:
+            await self._metrics.record_investigation(investigation)
 
         # Route to human
         return {
