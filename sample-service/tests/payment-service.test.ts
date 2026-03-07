@@ -72,7 +72,7 @@ describe("Payment Service - Bug Demonstration", () => {
     //     throw new PaymentError(`Customer not found on retry: ${request.customerId}`);
     //   }
 
-    // Verify the bug exists by checking the source
+    // Verify the fix is in place by checking the source
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const fs = require("fs");
     const source = fs.readFileSync(
@@ -80,12 +80,10 @@ describe("Payment Service - Bug Demonstration", () => {
       "utf-8"
     );
 
-    // The bug: using non-null assertion on potentially null value
-    expect(source).toContain("retryCustomer!.paymentMethodId");
+    // The fix: non-null assertion removed
+    expect(source).not.toContain("retryCustomer!.paymentMethodId");
 
-    // The missing null check
-    expect(source).not.toContain(
-      'if (!retryCustomer) { throw new PaymentError'
-    );
+    // The null check is now present
+    expect(source).toContain("if (!retryCustomer)");
   });
 });
