@@ -642,7 +642,7 @@ var ANNOTATIONS = {
         sections: [
             { label: "What's Happening", text: 'DevinGuard clones the target repository and performs <strong>static analysis</strong> across three data sources to discover real bugs.' },
             { label: "Three Analysis Sources", type: "infographic", content: "scan_sources" },
-            { label: "Technology", text: '<span class="anno-highlight">Git clone (depth=1) &rarr; AST pattern matching + GitHub Issues API + Commit history scan</span>' }
+            { label: "Technology", text: 'Git clone (depth=1) &rarr; AST pattern matching + GitHub Issues API + Commit history scan' }
         ]
     },
     alert_created: {
@@ -870,9 +870,9 @@ window.showAnnotation = function(key) {
     annoState.active = key;
     annoState.seen[key] = true;
     // Append to history (bottom) — once added, stays in place
-    if (state.guideHistory.indexOf(key) === -1) {
-        state.guideHistory.push(key);
-    }
+    // Skip re-render if step already exists (prevents flashing)
+    if (state.guideHistory.indexOf(key) !== -1) return;
+    state.guideHistory.push(key);
     renderGuidePanel();
     // Scroll to bottom of panel to show latest step
     panel.scrollTop = panel.scrollHeight;
