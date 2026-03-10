@@ -300,7 +300,9 @@ async def list_demo_scenarios() -> list[dict]:
 
 class ScanRepoRequest(BaseModel):
     repo_url: str = "https://github.com/t1mchee/payment-service"
-    max_issues: int = 5
+    branch: str = "main"
+    max_issues: int = 10
+    scan_code: bool = True
 
 
 async def _fetch_github_issues(owner: str, repo: str, token: str, max_issues: int) -> list[dict]:
@@ -331,7 +333,7 @@ async def _fetch_github_issues(owner: str, repo: str, token: str, max_issues: in
     return issues[:max_issues]
 
 
-async def _fetch_error_patterns(owner: str, repo: str, token: str) -> list[dict]:
+async def _fetch_error_patterns(owner: str, repo: str, token: str, branch: str = "main") -> list[dict]:
     """Scan recent commits for error-related patterns (TypeError, catch blocks, etc.)."""
     headers: dict[str, str] = {"Accept": "application/vnd.github.v3+json"}
     if token and token != "ghp_xxx":
@@ -340,7 +342,7 @@ async def _fetch_error_patterns(owner: str, repo: str, token: str) -> list[dict]
     async with httpx.AsyncClient(timeout=30) as client:
         # Get recent commits
         url = f"https://api.github.com/repos/{owner}/{repo}/commits"
-        resp = await client.get(url, headers=headers, params={"per_page": 20})
+        resp = await client.get(url, headers=headers, params={"per_page": 20, "sha": branch})
         if resp.status_code != 200:
             return patterns
 
@@ -359,6 +361,252 @@ async def _fetch_error_patterns(owner: str, repo: str, token: str) -> list[dict]
                     "url": commit.get("html_url", ""),
                 })
     return patterns[:10]
+
+
+# ---------------------------------------------------------------------------
+# Code-level static analysis — scan actual source files for bug patterns
+# ---------------------------------------------------------------------------
+
+# Bug pattern definitions: each pattern has a regex, severity, error class, and description
+_CODE_BUG_PATTERNS: list[dict] = [
+    {
+        "id": "null-deref",
+        "pattern": r"(\w+)!\.(\w+)",
+        "title": "Potential null dereference — non-null assertion on possibly null value",
+        "error_class": "TypeError",
+        "severity": "high",
+        "description": "Non-null assertion operator used on a value that may be null, risking TypeError at runtime.",
+    },
+    {
+        "id": "sql-injection",
+        "pattern": r"(SELECT|INSERT|UPDATE|DELETE).*\$\{.*\}|`.*\$\{.*\}.*`.*(?:WHERE|VALUES|SET)",
+        "title": "SQL injection — user input interpolated into query string",
+        "error_class": "SQLInjection",
+        "severity": "critical",
+        "description": "User-controlled input is directly interpolated into a SQL query string without parameterization.",
+    },
+    {
+        "id": "sql-injection-concat",
+        "pattern": r"(?:SELECT|INSERT|UPDATE|DELETE).*'\s*\+\s*\w+|\+\s*['\"]\s*(?:AND|OR|WHERE)",
+        "title": "SQL injection — string concatenation in query",
+        "error_class": "SQLInjection",
+        "severity": "critical",
+        "description": "SQL query is built via string concatenation with variables, vulnerable to injection.",
+    },
+    {
+        "id": "unhandled-promise",
+        "pattern": r"setTimeout\s*\(\s*\(\)\s*=>\s*\{?\s*\w+\([^)]*\)(?!\s*\.catch)",
+        "title": "Unhandled promise rejection — async call in setTimeout without .catch()",
+        "error_class": "UnhandledRejection",
+        "severity": "high",
+        "description": "Async function called inside setTimeout without error handling. If it throws, the rejection is unhandled and may crash the process.",
+    },
+    {
+        "id": "unbounded-array",
+        "pattern": r"(\w+)\.push\([^)]+\)(?!.*(?:shift|splice|slice|length\s*>|MAX_))",
+        "title": "Potential memory leak — unbounded array growth",
+        "error_class": "OOMKilled",
+        "severity": "medium",
+        "description": "Array is appended to but never trimmed. Under sustained load this causes unbounded memory growth and eventual OOMKilled.",
+    },
+    {
+        "id": "timing-attack",
+        "pattern": r"(?:apiKey|password|secret|token)\s*[!=]==?\s*(?:validKey|expected|stored|process\.env)",
+        "title": "Timing attack — non-constant-time secret comparison",
+        "error_class": "SecurityVulnerability",
+        "severity": "medium",
+        "description": "Secret values are compared using standard equality operators instead of constant-time comparison (crypto.timingSafeEqual), leaking information via response timing.",
+    },
+    {
+        "id": "race-condition",
+        "pattern": r"(?:get|check|has)\w*\([^)]*\)[\s\S]{0,200}await\s+new\s+Promise[\s\S]{0,200}(?:set|update|mark)\w*\(",
+        "title": "Race condition — time-of-check to time-of-use (TOCTOU)",
+        "error_class": "RaceCondition",
+        "severity": "high",
+        "description": "A check-then-act sequence with an async delay between them. Concurrent requests can both pass the check before either completes the action.",
+    },
+    {
+        "id": "missing-null-check",
+        "pattern": r"await\s+\w+\([^)]*\)[\s;]*\n[^!]*\.(\w+)",
+        "title": "Missing null check after async call",
+        "error_class": "TypeError",
+        "severity": "medium",
+        "description": "Return value from async function is accessed without null checking. If the function returns null/undefined, this will throw.",
+    },
+]
+
+
+async def _scan_source_files(
+    owner: str, repo: str, token: str, branch: str = "main",
+) -> list[dict]:
+    """Fetch source files from a GitHub repo and scan for bug patterns.
+
+    Uses the GitHub Contents API to recursively list files, then downloads
+    and analyzes each source file (.ts, .js, .py, .go, .java, .rs) for
+    known bug patterns using regex matching.
+    """
+    import re
+
+    headers: dict[str, str] = {"Accept": "application/vnd.github.v3+json"}
+    if token and token != "ghp_xxx":
+        headers["Authorization"] = f"token {token}"
+
+    source_extensions = {".ts", ".js", ".py", ".go", ".java", ".rs", ".tsx", ".jsx"}
+    findings: list[dict] = []
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Fetch the repo file tree using the Git Trees API (recursive)
+        tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
+        resp = await client.get(tree_url, headers=headers)
+        if resp.status_code != 200:
+            logger.warning(f"Failed to fetch tree for {owner}/{repo}@{branch}: {resp.status_code}")
+            return findings
+
+        tree = resp.json()
+        source_files = [
+            item for item in tree.get("tree", [])
+            if item.get("type") == "blob"
+            and any(item["path"].endswith(ext) for ext in source_extensions)
+            and "node_modules" not in item["path"]
+            and "dist/" not in item["path"]
+            and "test" not in item["path"].lower()
+        ]
+
+        # Fetch each source file and scan for bug patterns
+        for file_info in source_files[:20]:  # Cap at 20 files to stay within rate limits
+            file_path = file_info["path"]
+            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={branch}"
+            file_resp = await client.get(content_url, headers=headers)
+            if file_resp.status_code != 200:
+                continue
+
+            file_data = file_resp.json()
+            # Content is base64-encoded
+            import base64
+            try:
+                content = base64.b64decode(file_data.get("content", "")).decode("utf-8", errors="replace")
+            except Exception:
+                continue
+
+            lines = content.split("\n")
+
+            # Check for BUG: / FIXME: / HACK: comments first (explicit markers)
+            for line_num, line in enumerate(lines, 1):
+                line_stripped = line.strip()
+                for marker in ["BUG:", "FIXME:", "HACK:"]:
+                    if marker in line_stripped and line_stripped.lstrip("/ *#").startswith(marker):
+                        # Extract the bug description from the comment
+                        desc = line_stripped.split(marker, 1)[1].strip()
+                        if len(desc) < 10:
+                            continue
+                        # Look at surrounding lines for more context
+                        context_lines = lines[max(0, line_num - 2):min(len(lines), line_num + 5)]
+                        context = "\n".join(context_lines)
+
+                        # Infer error class from description
+                        desc_lower = desc.lower()
+                        error_class = "RuntimeError"
+                        if "race" in desc_lower or "toctou" in desc_lower or "concurrent" in desc_lower:
+                            error_class = "RaceCondition"
+                        elif "memory" in desc_lower or "leak" in desc_lower or "oom" in desc_lower or "unbounded" in desc_lower:
+                            error_class = "OOMKilled"
+                        elif "null" in desc_lower or "typeerror" in desc_lower or "undefined" in desc_lower:
+                            error_class = "TypeError"
+                        elif "sql" in desc_lower or "injection" in desc_lower:
+                            error_class = "SQLInjection"
+                        elif "unhandled" in desc_lower or "promise" in desc_lower or "catch" in desc_lower:
+                            error_class = "UnhandledRejection"
+                        elif "timing" in desc_lower or "security" in desc_lower:
+                            error_class = "SecurityVulnerability"
+                        elif "off-by-one" in desc_lower or "boundary" in desc_lower:
+                            error_class = "LogicError"
+
+                        findings.append({
+                            "type": "code_marker",
+                            "file": file_path,
+                            "line": line_num,
+                            "marker": marker.rstrip(":"),
+                            "description": desc[:200],
+                            "error_class": error_class,
+                            "severity": "high" if marker == "BUG:" else "medium",
+                            "context": context[:500],
+                        })
+
+            # Run regex-based pattern matching
+            for pattern_def in _CODE_BUG_PATTERNS:
+                try:
+                    matches = list(re.finditer(pattern_def["pattern"], content, re.MULTILINE))
+                except re.error:
+                    continue
+                for match in matches[:3]:  # Cap matches per pattern per file
+                    match_line = content[:match.start()].count("\n") + 1
+                    context_start = max(0, match_line - 3)
+                    context_end = min(len(lines), match_line + 4)
+                    context = "\n".join(lines[context_start:context_end])
+
+                    findings.append({
+                        "type": "pattern_match",
+                        "file": file_path,
+                        "line": match_line,
+                        "pattern_id": pattern_def["id"],
+                        "title": pattern_def["title"],
+                        "error_class": pattern_def["error_class"],
+                        "severity": pattern_def["severity"],
+                        "description": pattern_def["description"],
+                        "matched_text": match.group(0)[:100],
+                        "context": context[:500],
+                    })
+
+    # Deduplicate findings by (file, error_class) — keep the highest severity one
+    seen: dict[str, dict] = {}
+    severity_rank = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+    for f in findings:
+        key = f"{f['file']}:{f['error_class']}"
+        existing = seen.get(key)
+        if not existing or severity_rank.get(f["severity"], 0) > severity_rank.get(existing["severity"], 0):
+            seen[key] = f
+    return list(seen.values())
+
+
+def _code_findings_to_alerts(
+    findings: list[dict], owner: str, repo: str,
+) -> list[dict]:
+    """Convert code analysis findings into PagerDuty-style alert payloads."""
+    alerts = []
+    for f in findings:
+        title = f.get("title") or f.get("description", "Code issue")
+        file_path = f["file"]
+        line = f.get("line", 0)
+
+        # Build a descriptive title for the dashboard
+        display_title = f"{f['error_class']}: {title}"
+        if len(display_title) > 120:
+            display_title = display_title[:117] + "..."
+
+        alerts.append({
+            "event": {
+                "event_type": "incident.triggered",
+                "data": {
+                    "id": f"code-{owner}-{repo}-{file_path}-L{line}-{f['error_class']}",
+                    "title": display_title,
+                    "urgency": "high" if f.get("severity") in ("critical", "high") else "low",
+                    "service": {"name": repo},
+                    "body": {
+                        "details": {
+                            "error_class": f["error_class"],
+                            "error_message": f.get("description", title),
+                            "file": file_path,
+                            "line": line,
+                            "severity": f.get("severity", "medium"),
+                            "context": f.get("context", ""),
+                            "source": f.get("type", "code_analysis"),
+                            "github_url": f"https://github.com/{owner}/{repo}/blob/main/{file_path}#L{line}",
+                        }
+                    },
+                },
+            }
+        })
+    return alerts
 
 
 def _issues_to_alerts(
@@ -471,9 +719,10 @@ async def scan_repository(
 ) -> dict:
     """Scan a GitHub repository for real bugs and feed them through the pipeline.
 
-    Discovers issues from:
+    Discovers issues from three sources:
     1. Open GitHub issues labeled 'bug'
     2. Recent commits with error-related messages
+    3. Code-level static analysis (BUG markers, regex pattern matching)
     Each discovered issue becomes a real alert flowing through triage -> dispatch -> fix.
     """
     from app.api.webhooks import get_dispatcher
@@ -487,20 +736,54 @@ async def scan_repository(
     owner, repo = parts[0], parts[1]
 
     token = settings.github_token or ""
+    branch = body.branch or "main"
 
-    # Fetch issues and error patterns in parallel
-    issues, patterns = await asyncio.gather(
+    # Fetch issues, commit patterns, and scan source code in parallel
+    gather_tasks: list = [
         _fetch_github_issues(owner, repo, token, body.max_issues),
-        _fetch_error_patterns(owner, repo, token),
-    )
+        _fetch_error_patterns(owner, repo, token, branch),
+    ]
+    if body.scan_code:
+        gather_tasks.append(_scan_source_files(owner, repo, token, branch))
 
-    if not issues and not patterns:
-        return {"error": f"No issues or error patterns found in {owner}/{repo}. The repo may be private (set GITHUB_TOKEN in .env)."}
+    results_raw = await asyncio.gather(*gather_tasks, return_exceptions=True)
 
-    # Convert to alert payloads
-    alert_payloads = _issues_to_alerts(issues, owner, repo)
-    if not alert_payloads:
-        alert_payloads = _commits_to_alerts(patterns[:body.max_issues], owner, repo)
+    issues = results_raw[0] if not isinstance(results_raw[0], Exception) else []
+    patterns = results_raw[1] if not isinstance(results_raw[1], Exception) else []
+    code_findings = results_raw[2] if len(results_raw) > 2 and not isinstance(results_raw[2], Exception) else []
+
+    if not issues and not patterns and not code_findings:
+        return {"error": f"No issues, error patterns, or code bugs found in {owner}/{repo}@{branch}. The repo may be private (set GITHUB_TOKEN in .env)."}
+
+    # Convert all sources to alert payloads
+    alert_payloads: list[dict] = []
+
+    # Code findings are the richest source — add them first
+    if code_findings:
+        alert_payloads.extend(_code_findings_to_alerts(code_findings, owner, repo))
+
+    # Add issue-based alerts
+    issue_alerts = _issues_to_alerts(issues, owner, repo)
+    alert_payloads.extend(issue_alerts)
+
+    # Add commit-based alerts if we don't have enough yet
+    if len(alert_payloads) < body.max_issues:
+        commit_alerts = _commits_to_alerts(patterns[:body.max_issues - len(alert_payloads)], owner, repo)
+        alert_payloads.extend(commit_alerts)
+
+    # Deduplicate by error_class to ensure diverse alerts
+    seen_classes: set[str] = set()
+    deduped: list[dict] = []
+    for payload in alert_payloads:
+        ec = payload["event"]["data"]["body"]["details"].get("error_class", "")
+        key = ec
+        if key not in seen_classes:
+            seen_classes.add(key)
+            deduped.append(payload)
+        elif len(deduped) < body.max_issues:
+            # Allow duplicates if we haven't hit the limit
+            deduped.append(payload)
+    alert_payloads = deduped[:body.max_issues]
 
     # Process each alert through the pipeline
     dispatcher = get_dispatcher(request)
@@ -521,15 +804,20 @@ async def scan_repository(
 
     return {
         "repo": f"{owner}/{repo}",
+        "branch": branch,
         "issues_found": len(issues),
         "error_commits_found": len(patterns),
+        "code_findings_found": len(code_findings),
         "alerts_created": len(alert_payloads),
         "results": results,
     }
 
 
 @router.get("/scan-repo/preview")
-async def preview_scan(repo_url: str = "https://github.com/t1mchee/payment-service") -> dict:
+async def preview_scan(
+    repo_url: str = "https://github.com/t1mchee/payment-service",
+    branch: str = "main",
+) -> dict:
     """Preview what a scan would find without triggering the pipeline."""
     repo_url = repo_url.rstrip("/")
     parts = repo_url.replace("https://github.com/", "").replace("http://github.com/", "").split("/")
@@ -539,15 +827,27 @@ async def preview_scan(repo_url: str = "https://github.com/t1mchee/payment-servi
 
     token = settings.github_token or ""
 
-    issues, patterns = await asyncio.gather(
+    issues, patterns, code_findings = await asyncio.gather(
         _fetch_github_issues(owner, repo, token, 10),
-        _fetch_error_patterns(owner, repo, token),
+        _fetch_error_patterns(owner, repo, token, branch),
+        _scan_source_files(owner, repo, token, branch),
     )
 
     return {
         "repo": f"{owner}/{repo}",
+        "branch": branch,
         "issues": [{"number": i["number"], "title": i["title"], "labels": [l["name"] for l in i.get("labels", [])]} for i in issues],
         "error_commits": patterns,
+        "code_findings": [
+            {
+                "file": f["file"],
+                "line": f.get("line"),
+                "error_class": f["error_class"],
+                "severity": f.get("severity"),
+                "title": f.get("title") or f.get("description", ""),
+            }
+            for f in code_findings
+        ],
     }
 
 

@@ -141,6 +141,19 @@
         }
         .scan-label svg { flex-shrink: 0; }
         .scan-input-wrap { flex: 1; }
+        .scan-branch-wrap {
+            width: 100px; flex-shrink: 0;
+        }
+        .scan-branch {
+            width: 100%; padding: 8px 10px; font-size: 13px;
+            background: var(--bg-primary); border: 1px solid var(--border);
+            border-radius: var(--radius-xs); color: var(--text-primary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            outline: none; transition: border-color 0.15s; text-align: center;
+        }
+        .scan-branch:focus { border-color: var(--accent-green); }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 1s linear infinite; }
         .scan-input {
             width: 100%; padding: 8px 12px; font-size: 13px;
             background: var(--bg-primary); border: 1px solid var(--border);
@@ -431,6 +444,9 @@
                         <div class="scan-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Scan Repository</div>
                         <div class="scan-input-wrap">
                             <input type="text" class="scan-input" id="scan-repo-url" value="https://github.com/t1mchee/payment-service" placeholder="https://github.com/owner/repo" />
+                        </div>
+                        <div class="scan-branch-wrap">
+                            <input type="text" class="scan-branch" id="scan-branch" value="main" placeholder="branch" title="Branch to scan" />
                         </div>
                         <button class="scan-btn primary" onclick="scanRepository()" id="btn-scan">
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage

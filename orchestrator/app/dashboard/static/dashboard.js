@@ -119,40 +119,43 @@ window.fireDemoScenario = function(scenario) {
 };
 
 // ---- Scan Repository ----
+var SCAN_BTN_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage';
+var SCAN_SPINNER_HTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning\u2026';
+
 window.scanRepository = function() {
     var input = document.getElementById("scan-repo-url");
+    var branchInput = document.getElementById("scan-branch");
     var btn = document.getElementById("btn-scan");
     var statusEl = document.getElementById("scan-status");
     var repoUrl = input ? input.value.trim() : "";
+    var branch = branchInput ? branchInput.value.trim() : "main";
     if (!repoUrl) { if (statusEl) statusEl.textContent = "Please enter a repository URL"; return; }
 
-    if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning\u2026'; }
-    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-blue)">Scanning repository for issues and error patterns\u2026</span>';
+    if (btn) { btn.disabled = true; btn.innerHTML = SCAN_SPINNER_HTML; }
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-blue)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Scanning source code, issues, and commits on <strong>' + esc(branch) + '</strong> branch\u2026</span>';
 
     fetch(API + "/scan-repo", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ repo_url: repoUrl, max_issues: 5 })
+        body: JSON.stringify({ repo_url: repoUrl, branch: branch, max_issues: 10, scan_code: true })
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {
         if (data.error) {
-            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">' + data.error + '</span>';
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">' + esc(data.error) + '</span>';
         } else {
-            var msg = 'Found ' + data.issues_found + ' issues, ' + data.error_commits_found + ' error commits. Created ' + data.alerts_created + ' alerts.';
-            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-green)">' + msg + '</span>';
+            var parts = [];
+            if (data.code_findings_found) parts.push(data.code_findings_found + ' code bugs');
+            if (data.issues_found) parts.push(data.issues_found + ' issues');
+            if (data.error_commits_found) parts.push(data.error_commits_found + ' suspicious commits');
+            var msg = 'Found ' + parts.join(', ') + '. Created <strong>' + data.alerts_created + ' alerts</strong> flowing through the pipeline.';
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-green)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>' + msg + '</span>';
         }
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage';
-        }
+        if (btn) { btn.disabled = false; btn.innerHTML = SCAN_BTN_HTML; }
     })
     .catch(function(err) {
-        if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">Scan failed: ' + err.message + '</span>';
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage';
-        }
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">Scan failed: ' + esc(err.message) + '</span>';
+        if (btn) { btn.disabled = false; btn.innerHTML = SCAN_BTN_HTML; }
     });
 };
 
