@@ -443,6 +443,148 @@
         .scan-label svg { vertical-align: middle; }
         .pipe-arrow svg { width: 14px; height: 14px; }
 
+        /* ---- Annotation popups ---- */
+        .anno-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.55);
+            z-index: 900; opacity: 0; transition: opacity 0.25s;
+            pointer-events: none;
+        }
+        .anno-overlay.visible { opacity: 1; pointer-events: auto; }
+        .anno-popup {
+            position: fixed; z-index: 901;
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 0;
+            min-width: 380px; max-width: 440px;
+            box-shadow: 0 16px 48px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+            opacity: 0; transform: translateY(12px) scale(0.97);
+            transition: opacity 0.3s ease, transform 0.3s ease;
+            pointer-events: none;
+        }
+        .anno-popup.visible { opacity: 1; transform: translateY(0) scale(1); pointer-events: auto; }
+        .anno-header {
+            padding: 16px 20px 12px; display: flex; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--border-subtle);
+        }
+        .anno-icon {
+            width: 36px; height: 36px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0;
+        }
+        .anno-icon.green { background: var(--accent-green-dim); color: var(--accent-green); }
+        .anno-icon.blue { background: var(--accent-blue-dim); color: var(--accent-blue); }
+        .anno-icon.amber { background: var(--accent-amber-dim); color: var(--accent-amber); }
+        .anno-icon.purple { background: var(--accent-purple-dim); color: var(--accent-purple); }
+        .anno-icon.red { background: var(--accent-red-dim); color: var(--accent-red); }
+        .anno-title-wrap { flex: 1; }
+        .anno-step { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.6px; color: var(--text-muted); margin-bottom: 2px; }
+        .anno-title { font-size: 14px; font-weight: 700; color: var(--text-primary); }
+        .anno-close {
+            width: 28px; height: 28px; border-radius: 6px; border: none;
+            background: transparent; color: var(--text-muted); cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s; flex-shrink: 0;
+        }
+        .anno-close:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .anno-body { padding: 16px 20px; }
+        .anno-section { margin-bottom: 14px; }
+        .anno-section:last-child { margin-bottom: 0; }
+        .anno-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;
+        }
+        .anno-text { font-size: 12px; line-height: 1.7; color: var(--text-secondary); }
+        .anno-text strong { color: var(--text-primary); font-weight: 600; }
+        .anno-highlight {
+            background: var(--bg-primary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs); padding: 10px 12px;
+            font-size: 11px; line-height: 1.6; color: var(--text-secondary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+        }
+        .anno-decision {
+            display: flex; align-items: center; gap: 8px; padding: 10px 14px;
+            border-radius: var(--radius-xs); font-size: 12px; font-weight: 600;
+            margin-top: 8px;
+        }
+        .anno-decision.to-devin { background: var(--accent-green-dim); color: var(--accent-green); }
+        .anno-decision.to-human { background: var(--accent-amber-dim); color: var(--accent-amber); }
+        .anno-decision.complete { background: var(--accent-blue-dim); color: var(--accent-blue); }
+        /* Inline infographic styles */
+        .anno-infographic {
+            background: var(--bg-primary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs); padding: 14px 16px;
+            margin-top: 10px;
+        }
+        .anno-flow {
+            display: flex; align-items: center; gap: 0; justify-content: center;
+            flex-wrap: wrap;
+        }
+        .anno-flow-node {
+            display: flex; align-items: center; gap: 5px;
+            padding: 5px 10px; border-radius: var(--radius-xs);
+            font-size: 10px; font-weight: 600; white-space: nowrap;
+            border: 1px solid var(--border);
+        }
+        .anno-flow-node.active { border-color: var(--accent-green); background: var(--accent-green-dim); color: var(--accent-green); }
+        .anno-flow-node.highlight { border-color: var(--accent-blue); background: var(--accent-blue-dim); color: var(--accent-blue); }
+        .anno-flow-node.warn { border-color: var(--accent-amber); background: var(--accent-amber-dim); color: var(--accent-amber); }
+        .anno-flow-arrow { color: var(--text-muted); font-size: 12px; padding: 0 4px; }
+        .anno-flow-arrow svg { width: 12px; height: 12px; }
+        .anno-flow-branch {
+            display: flex; flex-direction: column; gap: 4px;
+            padding-left: 4px;
+        }
+        .anno-metrics {
+            display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+            margin-top: 10px;
+        }
+        .anno-metric {
+            text-align: center; padding: 8px 6px;
+            background: var(--bg-primary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-xs);
+        }
+        .anno-metric-val { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+        .anno-metric-label { font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.3px; margin-top: 2px; }
+        /* Pipeline timeline bar */
+        .anno-timeline-bar {
+            display: flex; height: 24px; border-radius: 4px; overflow: hidden;
+            margin-top: 8px; background: var(--bg-tertiary);
+        }
+        .anno-tbar-seg {
+            display: flex; align-items: center; justify-content: center;
+            font-size: 9px; font-weight: 600; color: #000;
+            transition: width 0.5s ease;
+        }
+        /* Info button on pipe stages */
+        .pipe-info {
+            position: absolute; top: -4px; right: -4px;
+            width: 16px; height: 16px; border-radius: 50%;
+            background: var(--bg-tertiary); border: 1px solid var(--border);
+            color: var(--text-muted); font-size: 9px; font-weight: 700;
+            display: flex; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s; z-index: 5;
+            opacity: 0; pointer-events: none;
+        }
+        .pipe-stage:hover .pipe-info { opacity: 1; pointer-events: auto; }
+        .pipe-info:hover { background: var(--accent-blue); color: #fff; border-color: var(--accent-blue); }
+        .pipe-stage { position: relative; }
+        /* Anno progress dots */
+        .anno-progress {
+            display: flex; gap: 4px; justify-content: center;
+            padding: 12px 20px; border-top: 1px solid var(--border-subtle);
+        }
+        .anno-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--bg-tertiary); transition: background 0.2s;
+            cursor: pointer;
+        }
+        .anno-dot.active { background: var(--accent-green); }
+        .anno-dot.seen { background: var(--text-muted); }
+        .anno-auto-timer {
+            position: absolute; bottom: 0; left: 0; height: 2px;
+            background: var(--accent-green); border-radius: 0 0 var(--radius) var(--radius);
+            transition: width 0.1s linear;
+        }
+
         /* ---- Scrollbar ---- */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -497,15 +639,15 @@
 
                 <div class="pipeline-box">
                     <div class="pipeline-flow">
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-alert"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pipe-count" id="p-alert-n">0</div><div class="pipe-label">Alert<br>Received</div></div>
+                        <div class="pipe-stage"><div class="pipe-info" onclick="showPipeInfo('alert',event)">i</div><div class="pipe-icon" id="p-alert"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pipe-count" id="p-alert-n">0</div><div class="pipe-label">Alert<br>Received</div></div>
                         <div class="pipe-arrow" id="a1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-triage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="pipe-count" id="p-triage-n">0</div><div class="pipe-label">Triage<br>Classified</div></div>
+                        <div class="pipe-stage"><div class="pipe-info" onclick="showPipeInfo('triage',event)">i</div><div class="pipe-icon" id="p-triage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="pipe-count" id="p-triage-n">0</div><div class="pipe-label">Triage<br>Classified</div></div>
                         <div class="pipe-arrow" id="a2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-dispatch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div class="pipe-count" id="p-dispatch-n">0</div><div class="pipe-label">Dispatched<br>to Devin</div></div>
+                        <div class="pipe-stage"><div class="pipe-info" onclick="showPipeInfo('dispatch',event)">i</div><div class="pipe-icon" id="p-dispatch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div class="pipe-count" id="p-dispatch-n">0</div><div class="pipe-label">Dispatched<br>to Devin</div></div>
                         <div class="pipe-arrow" id="a3"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-invest"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></div><div class="pipe-count" id="p-invest-n">0</div><div class="pipe-label">Devin<br>Investigating</div></div>
+                        <div class="pipe-stage"><div class="pipe-info" onclick="showPipeInfo('invest',event)">i</div><div class="pipe-icon" id="p-invest"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></div><div class="pipe-count" id="p-invest-n">0</div><div class="pipe-label">Devin<br>Investigating</div></div>
                         <div class="pipe-arrow" id="a4"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-resolved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div><div class="pipe-count" id="p-resolved-n">0</div><div class="pipe-label">Fix PR<br>Opened</div></div>
+                        <div class="pipe-stage"><div class="pipe-info" onclick="showPipeInfo('resolved',event)">i</div><div class="pipe-icon" id="p-resolved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div><div class="pipe-count" id="p-resolved-n">0</div><div class="pipe-label">Fix PR<br>Opened</div></div>
                     </div>
                 </div>
 
@@ -605,6 +747,8 @@
     </div>
 
     <div class="toast-container" id="toast-container"></div>
+    <div class="anno-overlay" id="anno-overlay" onclick="dismissAnnotation()"></div>
+    <div class="anno-popup" id="anno-popup"></div>
 
     <script src="/static/dashboard.js"></script>
 </body>

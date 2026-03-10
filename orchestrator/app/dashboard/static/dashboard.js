@@ -65,6 +65,18 @@ function connectSSE() {
             showToast(evt);
             var triggers = ["dispatched","session_complete","pr_opened","triage_complete","escalated","alert_received"];
             if (triggers.indexOf(evt.event_type) !== -1) fetchInvestigations();
+            // Trigger annotations for pipeline events
+            if (evt.event_type === "alert_received") queueAnnotation("alert_created");
+            if (evt.event_type === "triage_complete") {
+                var cls = (evt.metadata && evt.metadata.classification) || (evt.detail && evt.detail.indexOf("CODE_LEVEL") !== -1 ? "CODE_LEVEL" : "");
+                if (cls === "CODE_LEVEL") queueAnnotation("triage_code");
+                else queueAnnotation("triage_infra");
+            }
+            if (evt.event_type === "dispatched") queueAnnotation("dispatched");
+            if (evt.event_type === "pr_opened") queueAnnotation("pr_opened");
+            if (evt.event_type === "escalated") queueAnnotation("escalation_action");
+            // Show investigating annotation when session poller starts producing data
+            if (evt.event_type === "session_update") queueAnnotation("investigating");
             // Start session poller for dispatched events
             if (evt.event_type === "dispatched" && evt.metadata && evt.metadata.session_id) {
                 startSessionPoller(evt.metadata.session_id, evt.investigation_id);
@@ -137,6 +149,7 @@ window.scanRepository = function() {
 
     if (btn) { btn.disabled = true; btn.innerHTML = SCAN_SPINNER_HTML; }
     if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-blue)"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:4px"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Scanning source code, issues, and commits on <strong>' + esc(branch) + '</strong> branch\u2026</span>';
+    queueAnnotation('scan_initiated');
 
     fetch(API + "/scan-repo", {
         method: "POST",
@@ -621,6 +634,303 @@ window.escalationAction = function(investigationId, action) {
     .finally(function() {
         for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
     });
+};
+
+// ---- Annotation popup system ----
+var ANNO_SVG_ARROW = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>';
+
+var ANNOTATIONS = {
+    scan_initiated: {
+        step: "Step 1",
+        title: "Repository Analysis",
+        iconColor: "blue",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+        sections: [
+            { label: "What's Happening", text: 'DevinGuard clones the target repository and performs <strong>static analysis</strong> across three data sources to discover real bugs.' },
+            { label: "Three Analysis Sources", type: "infographic", content: "scan_sources" },
+            { label: "Technology", text: '<span class="anno-highlight">Git clone (depth=1) &rarr; AST pattern matching + GitHub Issues API + Commit history scan</span>' }
+        ]
+    },
+    alert_created: {
+        step: "Step 2",
+        title: "Alert Ingested",
+        iconColor: "amber",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+        sections: [
+            { label: "What's Happening", text: 'Each code finding is normalized into a <strong>standard alert payload</strong> (PagerDuty format). In production, these come from Sentry, PagerDuty, or Datadog webhooks.' },
+            { label: "Deduplication", text: 'Composite key: <strong>(service, error_class, stack_fingerprint)</strong> with a 5-minute TTL window prevents duplicate alerts from flooding the system.' },
+            { label: "Alert Flow", type: "infographic", content: "alert_flow" }
+        ]
+    },
+    triage_code: {
+        step: "Step 3a",
+        title: "Triage: CODE_LEVEL",
+        iconColor: "green",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m16 18 2 2 4-4"/><path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/></svg>',
+        sections: [
+            { label: "Classification", text: 'This alert was classified as a <strong>code-level bug</strong> suitable for autonomous investigation by Devin.' },
+            { label: "How Triage Works", type: "infographic", content: "triage_tree" },
+            { label: "Decision", type: "decision", variant: "to-devin", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>', text: "Dispatch to Devin for autonomous investigation" }
+        ]
+    },
+    triage_infra: {
+        step: "Step 3b",
+        title: "Triage: INFRASTRUCTURE",
+        iconColor: "amber",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+        sections: [
+            { label: "Classification", text: 'This alert was classified as an <strong>infrastructure issue</strong> \u2014 not a code bug. OOMKilled errors, scaling issues, and config problems require <strong>human ops judgment</strong>.' },
+            { label: "Why Not Devin?", text: 'Infrastructure issues cannot be fixed by code changes alone. They require capacity planning, config updates, or platform-level interventions that need human context.' },
+            { label: "Decision", type: "decision", variant: "to-human", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>', text: "Escalated to human review (see Escalations tab)" }
+        ]
+    },
+    dispatched: {
+        step: "Step 4",
+        title: "Devin Session Created",
+        iconColor: "blue",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+        sections: [
+            { label: "What Devin Receives", type: "metrics", items: [
+                { val: "Bug", label: "Error context" },
+                { val: "File", label: "Affected code" },
+                { val: "Repo", label: "Repository" }
+            ]},
+            { label: "What Happens Next", text: 'Devin <strong>clones the repo</strong>, reproduces the bug, identifies the root cause, writes a fix, runs tests, and <strong>opens a PR</strong> \u2014 all autonomously.' },
+            { label: "Monitoring", text: 'DevinGuard polls every <strong>10 seconds</strong> for progress. Loop detection watches for command repetition, file re-reads, and stalls. Auto-redirect after 2 loops, terminate after 3.' }
+        ]
+    },
+    investigating: {
+        step: "Step 5",
+        title: "Investigation in Progress",
+        iconColor: "purple",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>',
+        sections: [
+            { label: "What's Happening", text: 'Devin is <strong>autonomously investigating</strong> the bug. It reads the codebase, identifies the root cause, and builds a fix.' },
+            { label: "Loop Detection", type: "infographic", content: "loop_detection" },
+            { label: "Safety Net", text: 'If Devin gets stuck (repeating commands, re-reading files, or stalling), DevinGuard <strong>redirects</strong> with new context. After 3 failed redirects, the session is <strong>terminated</strong> to prevent wasted ACUs.' }
+        ]
+    },
+    pr_opened: {
+        step: "Step 6",
+        title: "Fix PR Opened",
+        iconColor: "green",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+        sections: [
+            { label: "Pipeline Complete", type: "infographic", content: "pipeline_timeline" },
+            { label: "What Was Fixed", text: 'Devin identified the <strong>root cause</strong>, wrote a fix, ensured tests pass, and opened a pull request with a detailed description.' },
+            { label: "Next Steps in Production", text: '<strong>Auto-merge gate</strong> checks 11 preconditions (tests pass, no secrets leaked, single-file change, etc.). Complex changes go to <strong>human review</strong>. Metrics are logged for continuous improvement.' },
+            { label: "Decision", type: "decision", variant: "complete", icon: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>', text: "Alert \u2192 Triage \u2192 Devin \u2192 Fix PR \u2014 fully autonomous" }
+        ]
+    },
+    escalation_action: {
+        step: "Human Review",
+        title: "Escalation Actions",
+        iconColor: "amber",
+        icon: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>',
+        sections: [
+            { label: "What's Happening", text: 'An engineer is reviewing an escalated alert. The system provides <strong>triage reasoning</strong> and <strong>confidence scores</strong> to help the human decide.' },
+            { label: "Available Actions", type: "infographic", content: "escalation_options" },
+            { label: "Human-in-the-Loop", text: 'This shows the <strong>human-in-the-loop design</strong>: Devin handles code bugs autonomously, while infrastructure and ambiguous cases are escalated for human judgment. Humans can always override.' }
+        ]
+    }
+};
+
+// Infographic renderers
+function renderInfographic(id) {
+    switch (id) {
+        case "scan_sources":
+            return '<div class="anno-infographic"><div class="anno-flow">' +
+                '<div class="anno-flow-node active"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Code Patterns</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node highlight"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.28 1.15-.28 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65S8.93 17.38 9 18v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg> GitHub Issues</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node warn"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="m16 16 4 4"/></svg> Commit History</div>' +
+                '</div>' +
+                '<div class="anno-metrics" style="margin-top:10px;">' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-green)">8</div><div class="anno-metric-label">Vuln Patterns</div></div>' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-blue)">30</div><div class="anno-metric-label">Files Scanned</div></div>' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-amber)">50</div><div class="anno-metric-label">Commits Checked</div></div>' +
+                '</div></div>';
+        case "alert_flow":
+            return '<div class="anno-infographic"><div class="anno-flow">' +
+                '<div class="anno-flow-node">Finding</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node highlight">Normalize</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node active">Dedup Check</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node warn">Alert Event</div>' +
+                '</div></div>';
+        case "triage_tree":
+            return '<div class="anno-infographic">' +
+                '<div class="anno-flow" style="flex-direction:column;gap:6px;align-items:stretch;">' +
+                '<div style="display:flex;align-items:center;gap:6px;justify-content:center;">' +
+                '<div class="anno-flow-node">Alert</div>' +
+                '<span class="anno-flow-arrow">' + ANNO_SVG_ARROW + '</span>' +
+                '<div class="anno-flow-node highlight">Rule Engine</div>' +
+                '</div>' +
+                '<div style="display:flex;gap:8px;justify-content:center;margin-top:4px;">' +
+                '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+                '<div style="font-size:9px;color:var(--text-muted);font-weight:600;">MATCH</div>' +
+                '<div class="anno-flow-node active">Classification</div>' +
+                '</div>' +
+                '<div style="display:flex;flex-direction:column;align-items:center;gap:4px;">' +
+                '<div style="font-size:9px;color:var(--text-muted);font-weight:600;">NO MATCH</div>' +
+                '<div class="anno-flow-node warn">GPT-4o-mini</div>' +
+                '</div>' +
+                '</div>' +
+                '<div style="display:flex;gap:6px;justify-content:center;margin-top:4px;">' +
+                '<div class="anno-flow-node active" style="font-size:9px;">CODE_LEVEL</div>' +
+                '<div class="anno-flow-node warn" style="font-size:9px;">INFRASTRUCTURE</div>' +
+                '<div class="anno-flow-node" style="font-size:9px;">OTHER</div>' +
+                '</div>' +
+                '</div></div>';
+        case "loop_detection":
+            return '<div class="anno-infographic">' +
+                '<div class="anno-metrics">' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-blue)">10s</div><div class="anno-metric-label">Poll Interval</div></div>' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-amber)">2</div><div class="anno-metric-label">Redirects</div></div>' +
+                '<div class="anno-metric"><div class="anno-metric-val" style="color:var(--accent-red)">3</div><div class="anno-metric-label">Max Loops</div></div>' +
+                '</div>' +
+                '<div style="display:flex;gap:4px;margin-top:10px;justify-content:center;flex-wrap:wrap;">' +
+                '<div class="anno-flow-node" style="font-size:9px;">Cmd Repetition</div>' +
+                '<div class="anno-flow-node" style="font-size:9px;">File Re-reads</div>' +
+                '<div class="anno-flow-node" style="font-size:9px;">Output Stalls</div>' +
+                '</div>' +
+                '</div>';
+        case "pipeline_timeline":
+            return '<div class="anno-infographic">' +
+                '<div class="anno-timeline-bar">' +
+                '<div class="anno-tbar-seg" style="width:5%;background:var(--accent-amber);">0s</div>' +
+                '<div class="anno-tbar-seg" style="width:5%;background:var(--accent-blue);">2s</div>' +
+                '<div class="anno-tbar-seg" style="width:5%;background:var(--accent-purple);">3s</div>' +
+                '<div class="anno-tbar-seg" style="width:70%;background:var(--accent-blue);opacity:0.7;">Investigation</div>' +
+                '<div class="anno-tbar-seg" style="width:15%;background:var(--accent-green);">PR</div>' +
+                '</div>' +
+                '<div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-muted);margin-top:4px;padding:0 2px;">' +
+                '<span>Alert</span><span>Triage</span><span>Dispatch</span><span>Devin Investigating</span><span>Fix PR</span>' +
+                '</div>' +
+                '</div>';
+        case "escalation_options":
+            return '<div class="anno-infographic" style="padding:12px 14px;">' +
+                '<div style="display:flex;flex-direction:column;gap:8px;">' +
+                '<div style="display:flex;align-items:center;gap:10px;"><div class="anno-flow-node highlight" style="min-width:120px;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg> Acknowledge</div><span style="font-size:11px;color:var(--text-secondary);">I\'ve seen this, tracking separately</span></div>' +
+                '<div style="display:flex;align-items:center;gap:10px;"><div class="anno-flow-node active" style="min-width:120px;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg> Reassign</div><span style="font-size:11px;color:var(--text-secondary);">Override triage \u2014 let Devin investigate</span></div>' +
+                '<div style="display:flex;align-items:center;gap:10px;"><div class="anno-flow-node" style="min-width:120px;justify-content:center;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> Dismiss</div><span style="font-size:11px;color:var(--text-secondary);">False positive or already handled</span></div>' +
+                '</div></div>';
+        default:
+            return '';
+    }
+}
+
+// Annotation state
+var annoState = {
+    active: null,
+    autoTimer: null,
+    seen: {},
+    queue: []
+};
+
+function buildAnnoHTML(key) {
+    var a = ANNOTATIONS[key];
+    if (!a) return '';
+    var html = '<div class="anno-header">' +
+        '<div class="anno-icon ' + a.iconColor + '">' + a.icon + '</div>' +
+        '<div class="anno-title-wrap"><div class="anno-step">' + a.step + '</div><div class="anno-title">' + a.title + '</div></div>' +
+        '<button class="anno-close" onclick="dismissAnnotation()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>' +
+        '</div><div class="anno-body">';
+    for (var i = 0; i < a.sections.length; i++) {
+        var s = a.sections[i];
+        html += '<div class="anno-section">';
+        if (s.type === "infographic") {
+            html += '<div class="anno-label">' + s.label + '</div>' + renderInfographic(s.content);
+        } else if (s.type === "decision") {
+            html += '<div class="anno-decision ' + s.variant + '">' + s.icon + ' ' + s.text + '</div>';
+        } else if (s.type === "metrics") {
+            html += '<div class="anno-label">' + s.label + '</div><div class="anno-metrics">';
+            for (var m = 0; m < s.items.length; m++) {
+                html += '<div class="anno-metric"><div class="anno-metric-val">' + s.items[m].val + '</div><div class="anno-metric-label">' + s.items[m].label + '</div></div>';
+            }
+            html += '</div>';
+        } else {
+            html += '<div class="anno-label">' + s.label + '</div><div class="anno-text">' + s.text + '</div>';
+        }
+        html += '</div>';
+    }
+    html += '</div>';
+    // Progress dots
+    var allKeys = Object.keys(ANNOTATIONS);
+    html += '<div class="anno-progress">';
+    for (var j = 0; j < allKeys.length; j++) {
+        var cls = allKeys[j] === key ? "active" : (annoState.seen[allKeys[j]] ? "seen" : "");
+        html += '<div class="anno-dot ' + cls + '" onclick="showAnnotation(\'' + allKeys[j] + '\')" title="' + ANNOTATIONS[allKeys[j]].title + '"></div>';
+    }
+    html += '</div>';
+    return html;
+}
+
+window.showAnnotation = function(key) {
+    var popup = document.getElementById("anno-popup");
+    var overlay = document.getElementById("anno-overlay");
+    if (!popup || !overlay) return;
+    // Clear any auto-dismiss timer
+    if (annoState.autoTimer) { clearTimeout(annoState.autoTimer); annoState.autoTimer = null; }
+    annoState.active = key;
+    annoState.seen[key] = true;
+    popup.innerHTML = buildAnnoHTML(key);
+    // Position: center of screen
+    popup.style.top = "50%";
+    popup.style.left = "50%";
+    popup.style.transform = "translate(-50%, -50%) scale(0.97)";
+    // Show
+    requestAnimationFrame(function() {
+        overlay.classList.add("visible");
+        popup.classList.add("visible");
+        popup.style.transform = "translate(-50%, -50%) scale(1)";
+    });
+    // Auto-dismiss after 12 seconds
+    annoState.autoTimer = setTimeout(function() {
+        dismissAnnotation();
+    }, 12000);
+};
+
+window.dismissAnnotation = function() {
+    var popup = document.getElementById("anno-popup");
+    var overlay = document.getElementById("anno-overlay");
+    if (popup) popup.classList.remove("visible");
+    if (overlay) overlay.classList.remove("visible");
+    if (annoState.autoTimer) { clearTimeout(annoState.autoTimer); annoState.autoTimer = null; }
+    annoState.active = null;
+    // Process queue
+    if (annoState.queue.length > 0) {
+        var next = annoState.queue.shift();
+        setTimeout(function() { showAnnotation(next); }, 400);
+    }
+};
+
+// Queue annotation if one is already showing
+function queueAnnotation(key) {
+    if (annoState.active) {
+        if (annoState.active !== key && annoState.queue.indexOf(key) === -1) {
+            annoState.queue.push(key);
+        }
+        return;
+    }
+    showAnnotation(key);
+}
+
+// Info icon click handler for pipeline stages
+window.showPipeInfo = function(stageKey, evt) {
+    if (evt) evt.stopPropagation();
+    var map = {
+        "alert": "alert_created",
+        "triage": "triage_code",
+        "dispatch": "dispatched",
+        "invest": "investigating",
+        "resolved": "pr_opened"
+    };
+    var annoKey = map[stageKey];
+    if (annoKey) showAnnotation(annoKey);
 };
 
 // ---- Eval scorecard (Feature #6) ----
