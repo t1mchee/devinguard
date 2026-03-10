@@ -3,119 +3,319 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DevinGuard - Live Pipeline Dashboard</title>
+    <title>DevinGuard</title>
     <style>
         :root {
-            --bg-primary: #0d1117;
-            --bg-secondary: #161b22;
-            --bg-tertiary: #21262d;
-            --border: #30363d;
-            --text-primary: #e6edf3;
-            --text-secondary: #8b949e;
-            --text-muted: #484f58;
-            --accent-blue: #58a6ff;
-            --accent-green: #3fb950;
-            --accent-amber: #d29922;
-            --accent-red: #f85149;
-            --accent-purple: #bc8cff;
+            --bg-primary: #0a0a0a;
+            --bg-secondary: #141414;
+            --bg-tertiary: #1a1a1a;
+            --bg-elevated: #1f1f1f;
+            --border: #2a2a2a;
+            --border-subtle: #222;
+            --text-primary: #fafafa;
+            --text-secondary: #a0a0a0;
+            --text-muted: #666;
+            --accent-green: #22c55e;
+            --accent-green-dim: rgba(34,197,94,0.12);
+            --accent-blue: #3b82f6;
+            --accent-blue-dim: rgba(59,130,246,0.12);
+            --accent-amber: #f59e0b;
+            --accent-amber-dim: rgba(245,158,11,0.12);
+            --accent-red: #ef4444;
+            --accent-red-dim: rgba(239,68,68,0.12);
+            --accent-purple: #a78bfa;
+            --accent-purple-dim: rgba(167,139,250,0.12);
+            --radius: 12px;
+            --radius-sm: 8px;
+            --radius-xs: 6px;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-            background: var(--bg-primary); color: var(--text-primary); min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', system-ui, sans-serif;
+            background: var(--bg-primary); color: var(--text-primary);
+            min-height: 100vh; overflow: hidden;
+            -webkit-font-smoothing: antialiased;
         }
+        /* ---- Header ---- */
         .header {
-            padding: 20px 32px; border-bottom: 1px solid var(--border);
+            height: 56px; padding: 0 24px;
+            border-bottom: 1px solid var(--border);
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg-primary);
+        }
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .logo-mark {
+            width: 28px; height: 28px; border-radius: 6px;
+            background: var(--accent-green);
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 700; font-size: 13px; color: #000;
+        }
+        .header h1 { font-size: 15px; font-weight: 600; letter-spacing: -0.3px; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .conn-badge {
+            display: flex; align-items: center; gap: 6px;
+            font-size: 12px; color: var(--text-muted); font-weight: 500;
+        }
+        .conn-dot {
+            width: 6px; height: 6px; border-radius: 50%;
+            background: var(--accent-green); animation: pulse 2s infinite;
+        }
+        .conn-dot.disconnected { background: var(--accent-red); animation: none; }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+        /* ---- Nav tabs ---- */
+        .nav-tabs {
+            display: flex; gap: 2px; padding: 0 24px;
+            background: var(--bg-primary); border-bottom: 1px solid var(--border);
+        }
+        .nav-tab {
+            padding: 10px 16px; font-size: 13px; font-weight: 500;
+            color: var(--text-muted); cursor: pointer; border: none; background: none;
+            border-bottom: 2px solid transparent; transition: all 0.15s;
+        }
+        .nav-tab:hover { color: var(--text-secondary); }
+        .nav-tab.active { color: var(--text-primary); border-bottom-color: var(--accent-green); }
+
+        /* ---- Layout ---- */
+        .app-layout { display: grid; grid-template-columns: 1fr 320px; height: calc(100vh - 93px); }
+        .main-content { overflow-y: auto; padding: 20px 24px; }
+
+        /* ---- Stats row ---- */
+        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 20px; }
+        .stat-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 16px 18px;
+            transition: border-color 0.2s;
+        }
+        .stat-card:hover { border-color: var(--border); }
+        .stat-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 6px; }
+        .stat-value { font-size: 28px; font-weight: 700; letter-spacing: -1px; line-height: 1; }
+        .stat-sub { font-size: 11px; color: var(--text-muted); margin-top: 6px; }
+        .v-green { color: var(--accent-green); }
+        .v-blue { color: var(--accent-blue); }
+        .v-amber { color: var(--accent-amber); }
+
+        /* ---- Pipeline ---- */
+        .pipeline-box {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 20px 24px; margin-bottom: 20px;
+        }
+        .pipeline-flow { display: flex; align-items: center; justify-content: space-between; }
+        .pipe-stage { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+        .pipe-icon {
+            width: 44px; height: 44px; border-radius: 10px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; background: var(--bg-tertiary);
+            border: 1.5px solid var(--border); transition: all 0.4s ease;
+        }
+        .pipe-icon.active { border-color: var(--accent-blue); background: var(--accent-blue-dim); box-shadow: 0 0 16px rgba(59,130,246,0.15); }
+        .pipe-icon.complete { border-color: var(--accent-green); background: var(--accent-green-dim); }
+        .pipe-count { font-size: 16px; font-weight: 700; }
+        .pipe-label { font-size: 10px; color: var(--text-muted); text-align: center; font-weight: 500; text-transform: uppercase; letter-spacing: 0.3px; }
+        .pipe-arrow { color: var(--border); font-size: 14px; margin: 0 -2px; margin-bottom: 24px; transition: color 0.4s; }
+        .pipe-arrow.lit { color: var(--accent-green); }
+
+        /* ---- Section header ---- */
+        .section-head {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 14px;
+        }
+        .section-title {
+            font-size: 12px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+
+        /* ---- Demo trigger bar ---- */
+        .demo-bar {
+            display: flex; gap: 8px; margin-bottom: 20px; padding: 14px 16px;
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius);
+        }
+        .demo-bar-label {
+            font-size: 12px; font-weight: 600; color: var(--text-muted);
+            text-transform: uppercase; letter-spacing: 0.5px;
+            display: flex; align-items: center; margin-right: 8px;
+        }
+        .demo-btn {
+            padding: 7px 14px; border-radius: var(--radius-xs);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            border: 1px solid var(--border); background: var(--bg-tertiary);
+            color: var(--text-primary); transition: all 0.15s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .demo-btn:hover { background: var(--bg-elevated); border-color: var(--text-muted); }
+        .demo-btn:active { transform: scale(0.97); }
+        .demo-btn.primary {
+            background: var(--accent-green); color: #000;
+            border-color: var(--accent-green);
+        }
+        .demo-btn.primary:hover { background: #16a34a; }
+        .demo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        /* ---- Investigation cards ---- */
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .inv-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 16px 18px;
+            transition: border-color 0.2s;
+        }
+        .inv-card:hover { border-color: var(--border); }
+        .inv-card.card-active { border-color: var(--accent-blue); }
+        .inv-card.card-complete { border-color: var(--accent-green); }
+        .inv-card.card-escalated { border-color: var(--accent-amber); }
+        .inv-card-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .inv-id { font-size: 11px; font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-muted); }
+        .badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 11px; font-weight: 600;
+        }
+        .badge-investigating { background: var(--accent-blue-dim); color: var(--accent-blue); }
+        .badge-escalated { background: var(--accent-amber-dim); color: var(--accent-amber); }
+        .badge-fix-pr { background: var(--accent-green-dim); color: var(--accent-green); }
+        .badge-triaging { background: var(--accent-purple-dim); color: var(--accent-purple); }
+        .badge-error { background: var(--accent-red-dim); color: var(--accent-red); }
+        .badge .bdot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+        .badge-investigating .bdot { animation: pulse 1.5s infinite; }
+        .inv-service { font-size: 14px; font-weight: 600; margin-bottom: 3px; }
+        .inv-error { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .inv-triage {
+            font-size: 11px; color: var(--text-secondary);
+            background: var(--bg-primary); border-radius: var(--radius-xs);
+            padding: 8px 10px; margin-bottom: 10px;
+        }
+        .inv-triage .conf { font-weight: 600; color: var(--text-primary); }
+
+        /* ---- Mini pipeline dots ---- */
+        .mini-pipe { display: flex; gap: 3px; margin-bottom: 10px; }
+        .mini-dot { width: 20px; height: 3px; border-radius: 2px; background: var(--bg-tertiary); transition: background 0.3s; }
+        .mini-dot.done { background: var(--accent-green); }
+        .mini-dot.active { background: var(--accent-blue); animation: pulse 1.5s infinite; }
+        .mini-dot.warn { background: var(--accent-amber); }
+
+        /* ---- Resolution timeline ---- */
+        .res-timeline { margin: 10px 0; padding: 0; list-style: none; }
+        .res-step {
+            display: flex; align-items: flex-start; gap: 10px;
+            padding: 4px 0; font-size: 11px; position: relative;
+        }
+        .res-step::before {
+            content: ''; width: 1px; background: var(--border);
+            position: absolute; left: 5px; top: 18px; bottom: -4px;
+        }
+        .res-step:last-child::before { display: none; }
+        .res-dot {
+            width: 10px; height: 10px; border-radius: 50%;
+            border: 2px solid var(--border); background: var(--bg-primary);
+            flex-shrink: 0; margin-top: 2px; z-index: 1;
+        }
+        .res-dot.done { border-color: var(--accent-green); background: var(--accent-green); }
+        .res-dot.active { border-color: var(--accent-blue); background: var(--accent-blue); animation: pulse 1.5s infinite; }
+        .res-label { color: var(--text-secondary); }
+        .res-label.done { color: var(--text-primary); }
+        .res-ts { color: var(--text-muted); font-family: monospace; margin-left: auto; }
+
+        /* ---- Card meta & actions ---- */
+        .inv-meta { display: flex; gap: 14px; font-size: 11px; color: var(--text-muted); margin-bottom: 8px; }
+        .inv-meta span { display: flex; align-items: center; gap: 4px; }
+        .inv-timer { font-family: monospace; color: var(--accent-blue); }
+        .inv-actions { display: flex; gap: 6px; margin-top: 8px; }
+        .inv-actions a {
+            font-size: 11px; color: var(--accent-blue); text-decoration: none;
+            padding: 4px 10px; border: 1px solid var(--border);
+            border-radius: var(--radius-xs); transition: all 0.15s; font-weight: 500;
+        }
+        .inv-actions a:hover { background: var(--bg-tertiary); border-color: var(--text-muted); }
+
+        /* ---- Empty state ---- */
+        .empty-state { text-align: center; padding: 48px 24px; color: var(--text-muted); }
+        .empty-icon { font-size: 32px; margin-bottom: 10px; opacity: 0.5; }
+        .empty-msg { font-size: 13px; }
+        .empty-hint { font-size: 11px; margin-top: 6px; }
+
+        /* ---- Sidebar / Activity Feed ---- */
+        .sidebar {
+            border-left: 1px solid var(--border);
+            display: flex; flex-direction: column; overflow: hidden;
+            background: var(--bg-primary);
+        }
+        .sidebar-head {
+            padding: 14px 16px; border-bottom: 1px solid var(--border);
             display: flex; align-items: center; justify-content: space-between;
         }
-        .header-left { display: flex; align-items: center; gap: 16px; }
-        .logo {
-            width: 36px; height: 36px;
-            background: linear-gradient(135deg, var(--accent-blue), var(--accent-purple));
-            border-radius: 8px; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 16px; color: #fff;
+        .sidebar-title { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .sidebar-count { font-size: 11px; background: var(--bg-tertiary); color: var(--text-muted); padding: 2px 8px; border-radius: 10px; }
+        .feed-list { flex: 1; overflow-y: auto; padding: 4px 0; }
+        .feed-item {
+            padding: 10px 16px; border-bottom: 1px solid var(--border-subtle);
+            animation: feedSlide 0.3s ease-out;
         }
-        .header h1 { font-size: 20px; font-weight: 600; }
-        .header .subtitle { font-size: 13px; color: var(--text-secondary); }
-        .connection-status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); }
-        .connection-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent-green); animation: pulse 2s infinite; }
-        .connection-dot.disconnected { background: var(--accent-red); animation: none; }
-        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
-        .main-layout { display: grid; grid-template-columns: 1fr 340px; height: calc(100vh - 73px); }
-        .center-content { padding: 24px 32px; overflow-y: auto; }
-        .sidebar { border-left: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; }
-        .stats-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
-        .stat-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 16px 18px; }
-        .stat-card .label { font-size: 11px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
-        .stat-card .value { font-size: 28px; font-weight: 700; line-height: 1.1; }
-        .stat-card .sub { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
-        .green { color: var(--accent-green); }
-        .amber { color: var(--accent-amber); }
-        .red { color: var(--accent-red); }
-        .blue { color: var(--accent-blue); }
-        .purple { color: var(--accent-purple); }
-        .section-title { font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
-        .pipeline-container { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 12px; padding: 24px; margin-bottom: 24px; }
-        .pipeline-flow { display: flex; align-items: center; justify-content: space-between; gap: 0; }
-        .pipeline-stage { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: 1; position: relative; }
-        .stage-icon {
-            width: 48px; height: 48px; border-radius: 12px;
-            display: flex; align-items: center; justify-content: center;
-            font-size: 20px; background: var(--bg-tertiary);
-            border: 2px solid var(--border); transition: all 0.5s ease;
+        @keyframes feedSlide { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+        .feed-time { font-size: 10px; color: var(--text-muted); font-family: monospace; }
+        .feed-title { font-size: 12px; font-weight: 500; margin: 2px 0 1px; display: flex; align-items: center; gap: 6px; }
+        .feed-icon { font-size: 12px; flex-shrink: 0; }
+        .feed-detail { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+
+        /* ---- Toast notifications ---- */
+        .toast-container {
+            position: fixed; top: 64px; right: 24px;
+            display: flex; flex-direction: column; gap: 8px;
+            z-index: 1000; pointer-events: none;
         }
-        .stage-icon.active { border-color: var(--accent-blue); background: rgba(88,166,255,0.1); box-shadow: 0 0 20px rgba(88,166,255,0.2); }
-        .stage-icon.complete { border-color: var(--accent-green); background: rgba(63,185,80,0.1); }
-        .stage-label { font-size: 11px; color: var(--text-secondary); text-align: center; font-weight: 500; }
-        .stage-count { font-size: 18px; font-weight: 700; color: var(--text-primary); }
-        .pipeline-arrow { color: var(--text-muted); font-size: 18px; margin: 0 -4px; margin-bottom: 28px; flex-shrink: 0; transition: color 0.5s; }
-        .pipeline-arrow.lit { color: var(--accent-blue); }
-        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 14px; margin-bottom: 24px; }
-        .inv-card { background: var(--bg-secondary); border: 1px solid var(--border); border-radius: 10px; padding: 18px; transition: border-color 0.3s; }
-        .inv-card:hover { border-color: var(--text-muted); }
-        .inv-card.active { border-color: var(--accent-blue); }
-        .inv-card.completed { border-color: var(--accent-green); }
-        .inv-card.escalated { border-color: var(--accent-amber); }
-        .inv-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-        .inv-card-header .inv-id { font-size: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; color: var(--text-muted); }
-        .inv-card-header .status-badge { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 12px; font-size: 11px; font-weight: 600; }
-        .status-badge.triaging { background: rgba(188,140,255,0.15); color: var(--accent-purple); }
-        .status-badge.dispatched, .status-badge.investigating { background: rgba(88,166,255,0.15); color: var(--accent-blue); }
-        .status-badge.fix_pr { background: rgba(63,185,80,0.15); color: var(--accent-green); }
-        .status-badge.hypothesis { background: rgba(210,153,34,0.15); color: var(--accent-amber); }
-        .status-badge.inconclusive { background: rgba(248,81,73,0.15); color: var(--accent-red); }
-        .status-badge.escalated { background: rgba(210,153,34,0.15); color: var(--accent-amber); }
-        .status-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
-        .status-badge.investigating .dot, .status-badge.dispatched .dot { animation: pulse 1.5s infinite; }
-        .inv-card-service { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
-        .inv-card-error { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .inv-card-meta { display: flex; gap: 16px; font-size: 12px; color: var(--text-muted); margin-bottom: 12px; }
-        .inv-card-meta span { display: flex; align-items: center; gap: 4px; }
-        .inv-pipeline { display: flex; align-items: center; gap: 4px; margin-bottom: 12px; }
-        .inv-pip-dot { width: 24px; height: 4px; border-radius: 2px; background: var(--bg-tertiary); transition: background 0.3s; }
-        .inv-pip-dot.done { background: var(--accent-green); }
-        .inv-pip-dot.active { background: var(--accent-blue); animation: pulse 1.5s infinite; }
-        .inv-pip-dot.warn { background: var(--accent-amber); }
-        .inv-card-triage { font-size: 12px; color: var(--text-secondary); background: var(--bg-primary); border-radius: 6px; padding: 8px 10px; margin-bottom: 10px; }
-        .inv-card-triage .conf { font-weight: 600; color: var(--text-primary); }
-        .inv-card-actions { display: flex; gap: 8px; margin-top: 8px; }
-        .inv-card-actions a { font-size: 12px; color: var(--accent-blue); text-decoration: none; padding: 4px 10px; border: 1px solid var(--border); border-radius: 6px; transition: background 0.2s; }
-        .inv-card-actions a:hover { background: var(--bg-tertiary); }
-        .inv-card-timer { font-size: 12px; font-family: 'SF Mono', Monaco, 'Courier New', monospace; color: var(--accent-blue); }
-        .empty-state { text-align: center; padding: 48px; color: var(--text-muted); }
-        .empty-state .icon { font-size: 36px; margin-bottom: 12px; }
-        .empty-state .msg { font-size: 14px; }
-        .empty-state .hint { font-size: 12px; margin-top: 8px; color: var(--text-muted); }
-        .sidebar-header { padding: 16px 20px; border-bottom: 1px solid var(--border); font-size: 13px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.5px; display: flex; align-items: center; justify-content: space-between; }
-        .sidebar-header .count { font-size: 11px; background: var(--bg-tertiary); color: var(--text-secondary); padding: 2px 8px; border-radius: 10px; font-weight: 500; }
-        .feed-list { flex: 1; overflow-y: auto; padding: 8px 0; }
-        .feed-item { padding: 10px 20px; border-bottom: 1px solid rgba(48,54,61,0.5); animation: feedIn 0.4s ease-out; }
-        @keyframes feedIn { from { opacity: 0; transform: translateX(20px); } to { opacity: 1; transform: translateX(0); } }
-        .feed-item .feed-time { font-size: 10px; color: var(--text-muted); font-family: 'SF Mono', Monaco, 'Courier New', monospace; }
-        .feed-item .feed-title { font-size: 13px; font-weight: 500; color: var(--text-primary); margin: 3px 0 2px; display: flex; align-items: center; gap: 6px; }
-        .feed-item .feed-detail { font-size: 12px; color: var(--text-secondary); line-height: 1.4; }
-        .feed-icon { width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; flex-shrink: 0; }
-        ::-webkit-scrollbar { width: 6px; }
+        .toast {
+            background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: var(--radius-sm); padding: 12px 16px;
+            min-width: 280px; max-width: 380px;
+            display: flex; align-items: flex-start; gap: 10px;
+            animation: toastIn 0.3s ease-out;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+            pointer-events: auto;
+        }
+        .toast.toast-exit { animation: toastOut 0.3s ease-in forwards; }
+        @keyframes toastIn { from { opacity:0; transform:translateX(40px); } to { opacity:1; transform:translateX(0); } }
+        @keyframes toastOut { from { opacity:1; transform:translateX(0); } to { opacity:0; transform:translateX(40px); } }
+        .toast-icon { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+        .toast-body { flex: 1; }
+        .toast-title { font-size: 13px; font-weight: 600; margin-bottom: 2px; }
+        .toast-msg { font-size: 11px; color: var(--text-secondary); line-height: 1.4; }
+        .toast-bar {
+            position: absolute; bottom: 0; left: 0; height: 2px;
+            background: var(--accent-green); border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+            animation: toastBar 4s linear forwards;
+        }
+        @keyframes toastBar { from { width: 100%; } to { width: 0%; } }
+
+        /* ---- Confetti ---- */
+        .confetti-container { position: fixed; inset: 0; pointer-events: none; z-index: 999; overflow: hidden; }
+        .confetti-piece {
+            position: absolute; width: 8px; height: 8px;
+            border-radius: 2px; animation: confettiFall 2.5s ease-out forwards;
+        }
+        @keyframes confettiFall {
+            0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+            100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+        }
+
+        /* ---- Eval scorecard ---- */
+        .eval-panel { display: none; }
+        .eval-panel.visible { display: block; }
+        .eval-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+        .eval-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 16px;
+        }
+        .eval-card .el { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; font-weight: 600; margin-bottom: 6px; }
+        .eval-card .ev { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+        .eval-card .es { font-size: 11px; color: var(--text-muted); margin-top: 4px; }
+        .eval-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+        .eval-table th { text-align: left; padding: 8px 12px; color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; border-bottom: 1px solid var(--border); }
+        .eval-table td { padding: 8px 12px; border-bottom: 1px solid var(--border-subtle); color: var(--text-secondary); }
+        .eval-bar { display: flex; align-items: center; gap: 8px; }
+        .eval-bar-fill { height: 6px; border-radius: 3px; background: var(--accent-green); }
+        .eval-bar-track { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; }
+
+        /* ---- Scrollbar ---- */
+        ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb { background: var(--bg-tertiary); border-radius: 3px; }
         ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
@@ -124,97 +324,129 @@
 <body>
     <div class="header">
         <div class="header-left">
-            <div class="logo">D</div>
-            <div>
-                <h1>DevinGuard</h1>
-                <div class="subtitle">Autonomous Incident Response Pipeline</div>
-            </div>
+            <div class="logo-mark">D</div>
+            <h1>DevinGuard</h1>
         </div>
-        <div class="connection-status">
-            <span class="connection-dot" id="conn-dot"></span>
-            <span id="conn-text">Connected</span>
+        <div class="header-right">
+            <div class="conn-badge">
+                <span class="conn-dot" id="conn-dot"></span>
+                <span id="conn-text">Connecting...</span>
+            </div>
         </div>
     </div>
-    <div class="main-layout">
-        <div class="center-content">
-            <div class="stats-row">
-                <div class="stat-card">
-                    <div class="label">Alerts Received</div>
-                    <div class="value" id="stat-alerts">0</div>
-                    <div class="sub" id="stat-alerts-sub">Waiting for alerts</div>
+    <div class="nav-tabs">
+        <button class="nav-tab active" data-tab="pipeline" onclick="switchTab('pipeline')">Pipeline</button>
+        <button class="nav-tab" data-tab="eval" onclick="switchTab('eval')">Eval Scorecard</button>
+    </div>
+    <div class="app-layout">
+        <div class="main-content">
+            <!-- Pipeline tab -->
+            <div id="tab-pipeline">
+                <div class="stats-row">
+                    <div class="stat-card">
+                        <div class="stat-label">Alerts Received</div>
+                        <div class="stat-value" id="stat-alerts">0</div>
+                        <div class="stat-sub" id="stat-alerts-sub">Waiting for alerts</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">Active Investigations</div>
+                        <div class="stat-value v-blue" id="stat-active">0</div>
+                        <div class="stat-sub" id="stat-active-sub">None in progress</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">PRs Opened</div>
+                        <div class="stat-value v-green" id="stat-prs">0</div>
+                        <div class="stat-sub" id="stat-prs-sub">No fixes yet</div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-label">ACU Spend</div>
+                        <div class="stat-value v-amber" id="stat-acus">0.0</div>
+                        <div class="stat-sub" id="stat-acus-sub">$0.00 estimated</div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="label">Active Investigations</div>
-                    <div class="value blue" id="stat-active">0</div>
-                    <div class="sub" id="stat-active-sub">None in progress</div>
+
+                <div class="pipeline-box">
+                    <div class="pipeline-flow">
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-alert">&#x1F6A8;</div><div class="pipe-count" id="p-alert-n">0</div><div class="pipe-label">Alert<br>Received</div></div>
+                        <div class="pipe-arrow" id="a1">&#x25B8;</div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-triage">&#x1F50E;</div><div class="pipe-count" id="p-triage-n">0</div><div class="pipe-label">Triage<br>Classified</div></div>
+                        <div class="pipe-arrow" id="a2">&#x25B8;</div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-dispatch">&#x1F680;</div><div class="pipe-count" id="p-dispatch-n">0</div><div class="pipe-label">Dispatched<br>to Devin</div></div>
+                        <div class="pipe-arrow" id="a3">&#x25B8;</div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-invest">&#x1F9E0;</div><div class="pipe-count" id="p-invest-n">0</div><div class="pipe-label">Devin<br>Investigating</div></div>
+                        <div class="pipe-arrow" id="a4">&#x25B8;</div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-resolved">&#x2705;</div><div class="pipe-count" id="p-resolved-n">0</div><div class="pipe-label">Fix PR<br>Opened</div></div>
+                    </div>
                 </div>
-                <div class="stat-card">
-                    <div class="label">PRs Opened</div>
-                    <div class="value green" id="stat-prs">0</div>
-                    <div class="sub" id="stat-prs-sub">No fixes yet</div>
+
+                <div class="demo-bar" id="demo-bar">
+                    <div class="demo-bar-label">&#x26A1; Demo</div>
+                    <button class="demo-btn primary" onclick="fireDemoScenario('typeerror')" id="btn-typeerror">
+                        <span>&#x1F41B;</span> TypeError
+                    </button>
+                    <button class="demo-btn" onclick="fireDemoScenario('oomkilled')" id="btn-oomkilled">
+                        <span>&#x1F4A5;</span> OOMKilled
+                    </button>
+                    <button class="demo-btn" onclick="fireDemoScenario('latency')" id="btn-latency">
+                        <span>&#x23F1;</span> Latency Spike
+                    </button>
                 </div>
-                <div class="stat-card">
-                    <div class="label">ACU Spend</div>
-                    <div class="value amber" id="stat-acus">0</div>
-                    <div class="sub" id="stat-acus-sub">$0.00 estimated</div>
+
+                <div class="section-head">
+                    <div class="section-title">Investigations</div>
+                </div>
+                <div class="cards-grid" id="cards-grid">
+                    <div class="empty-state" id="empty-cards">
+                        <div class="empty-icon">&#x1F4E1;</div>
+                        <div class="empty-msg">No investigations yet</div>
+                        <div class="empty-hint">Click a demo button above to start the pipeline</div>
+                    </div>
                 </div>
             </div>
-            <div class="section-title">Pipeline Flow</div>
-            <div class="pipeline-container">
-                <div class="pipeline-flow">
-                    <div class="pipeline-stage">
-                        <div class="stage-icon" id="pipe-alert">&#x1F6A8;</div>
-                        <div class="stage-count" id="pipe-alert-count">0</div>
-                        <div class="stage-label">Alert<br>Received</div>
-                    </div>
-                    <div class="pipeline-arrow" id="arrow-1">&#x25B6;</div>
-                    <div class="pipeline-stage">
-                        <div class="stage-icon" id="pipe-triage">&#x1F50D;</div>
-                        <div class="stage-count" id="pipe-triage-count">0</div>
-                        <div class="stage-label">Triage<br>Classified</div>
-                    </div>
-                    <div class="pipeline-arrow" id="arrow-2">&#x25B6;</div>
-                    <div class="pipeline-stage">
-                        <div class="stage-icon" id="pipe-dispatch">&#x1F680;</div>
-                        <div class="stage-count" id="pipe-dispatch-count">0</div>
-                        <div class="stage-label">Dispatched<br>to Devin</div>
-                    </div>
-                    <div class="pipeline-arrow" id="arrow-3">&#x25B6;</div>
-                    <div class="pipeline-stage">
-                        <div class="stage-icon" id="pipe-investigating">&#x1F9E0;</div>
-                        <div class="stage-count" id="pipe-investigating-count">0</div>
-                        <div class="stage-label">Devin<br>Investigating</div>
-                    </div>
-                    <div class="pipeline-arrow" id="arrow-4">&#x25B6;</div>
-                    <div class="pipeline-stage">
-                        <div class="stage-icon" id="pipe-resolved">&#x2705;</div>
-                        <div class="stage-count" id="pipe-resolved-count">0</div>
-                        <div class="stage-label">Fix PR<br>Opened</div>
-                    </div>
+
+            <!-- Eval scorecard tab -->
+            <div id="tab-eval" class="eval-panel">
+                <div class="section-head" style="margin-top:4px;">
+                    <div class="section-title">Triage Classifier Performance</div>
                 </div>
-            </div>
-            <div class="section-title">Investigations</div>
-            <div class="cards-grid" id="cards-grid">
-                <div class="empty-state" id="empty-state">
-                    <div class="icon">&#x1F4E1;</div>
-                    <div class="msg">No investigations yet</div>
-                    <div class="hint">Fire a webhook to start the pipeline</div>
+                <div class="eval-grid" id="eval-top-cards"></div>
+                <div class="section-head">
+                    <div class="section-title">Per-Class Breakdown</div>
+                </div>
+                <div style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden;margin-bottom:20px;">
+                    <table class="eval-table" id="eval-class-table">
+                        <thead><tr><th>Class</th><th>Precision</th><th>Recall</th><th>F1</th><th>TP</th><th>FP</th></tr></thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+                <div class="section-head">
+                    <div class="section-title">Repo Breakdown</div>
+                </div>
+                <div style="background:var(--bg-secondary);border:1px solid var(--border-subtle);border-radius:var(--radius);overflow:hidden;">
+                    <table class="eval-table" id="eval-repo-table">
+                        <thead><tr><th>Repository</th><th>Total</th><th>Correct</th><th>Accuracy</th><th></th></tr></thead>
+                        <tbody></tbody>
+                    </table>
                 </div>
             </div>
         </div>
+
         <div class="sidebar">
-            <div class="sidebar-header">
-                Activity Feed
-                <span class="count" id="feed-count">0 events</span>
+            <div class="sidebar-head">
+                <span class="sidebar-title">Activity Feed</span>
+                <span class="sidebar-count" id="feed-count">0 events</span>
             </div>
             <div class="feed-list" id="feed-list">
                 <div class="empty-state" id="feed-empty" style="padding:32px;">
-                    <div class="icon">&#x23F3;</div>
-                    <div class="msg" style="font-size:13px;">Waiting for events...</div>
+                    <div class="empty-icon">&#x23F3;</div>
+                    <div class="empty-msg">Waiting for events...</div>
                 </div>
             </div>
         </div>
     </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

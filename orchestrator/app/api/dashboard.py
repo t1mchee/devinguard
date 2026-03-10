@@ -9,10 +9,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Optional
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
 
 from app.events.feed import activity_feed
@@ -182,3 +183,181 @@ async def live_investigations(request: Request) -> list[dict]:
             d["session_url"] = f"https://app.devin.ai/sessions/{sid}"
         result.append(d)
     return result
+
+
+# ---------------------------------------------------------------------------
+# Demo trigger endpoints
+# ---------------------------------------------------------------------------
+
+_DEMO_PAYLOADS = {
+    "typeerror": {
+        "event": {
+            "event_type": "incident.triggered",
+            "data": {
+                "id": "demo-typeerror",
+                "title": "TypeError: Cannot read properties of null",
+                "urgency": "high",
+                "service": {"name": "payment-service"},
+                "body": {
+                    "details": {
+                        "error_class": "TypeError",
+                        "error_message": "Cannot read properties of null (reading 'paymentMethodId')",
+                        "stack_trace": (
+                            "TypeError: Cannot read properties of null (reading 'paymentMethodId')\n"
+                            "    at ChargeHandler.handle (charge-handler.ts:25)\n"
+                            "    at PaymentService.processCharge (payment-service.ts:98)\n"
+                            "    at Router.handle (router.ts:44)"
+                        ),
+                    }
+                },
+            },
+        }
+    },
+    "oomkilled": {
+        "event": {
+            "event_type": "incident.triggered",
+            "data": {
+                "id": "demo-oomkilled",
+                "title": "OOMKilled: pod exceeded memory limit",
+                "urgency": "high",
+                "service": {"name": "api-gateway"},
+                "body": {
+                    "details": {
+                        "error_class": "OOMKilled",
+                        "error_message": "Container exceeded memory limit of 512Mi",
+                    }
+                },
+            },
+        }
+    },
+    "latency": {
+        "event": {
+            "event_type": "incident.triggered",
+            "data": {
+                "id": "demo-latency",
+                "title": "High latency: p99 > 5s on /api/checkout",
+                "urgency": "high",
+                "service": {"name": "checkout-service"},
+                "body": {
+                    "details": {
+                        "error_class": "LatencySpike",
+                        "error_message": "p99 latency exceeded 5000ms on /api/checkout endpoint",
+                    }
+                },
+            },
+        }
+    },
+}
+
+
+@router.post("/demo/trigger")
+async def trigger_demo(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    scenario: str = "typeerror",
+) -> dict:
+    """Fire a demo webhook through the pipeline. No curl needed."""
+    from app.api.webhooks import get_dispatcher
+    from app.webhooks.normalizers import normalize_pagerduty
+
+    payload = _DEMO_PAYLOADS.get(scenario)
+    if not payload:
+        return {"error": f"Unknown scenario: {scenario}", "available": list(_DEMO_PAYLOADS.keys())}
+
+    alert = normalize_pagerduty(payload)
+    dispatcher = get_dispatcher(request)
+    result = await dispatcher.handle_alert(alert)
+
+    if result.get("action") == "dispatched_to_devin":
+        investigation_id = result["investigation_id"]
+        background_tasks.add_task(dispatcher.monitor_session, investigation_id)
+
+    return result
+
+
+@router.get("/demo/scenarios")
+async def list_demo_scenarios() -> list[dict]:
+    """List available demo scenarios."""
+    scenarios = []
+    for key, payload in _DEMO_PAYLOADS.items():
+        data = payload["event"]["data"]
+        scenarios.append({
+            "id": key,
+            "title": data["title"],
+            "service": data["service"]["name"],
+            "error_class": data["body"]["details"]["error_class"],
+        })
+    return scenarios
+
+
+# ---------------------------------------------------------------------------
+# Session status polling (for live Devin progress on cards)
+# ---------------------------------------------------------------------------
+
+@router.get("/session-status/{session_id}")
+async def get_session_status(request: Request, session_id: str) -> dict:
+    """Poll Devin API for session progress. Returns status and structured steps."""
+    from app.core.devin_client import DevinAPIClient
+
+    client = DevinAPIClient()
+    try:
+        session = await client.get_session(session_id)
+    except Exception as exc:
+        return {"error": str(exc), "session_id": session_id}
+    finally:
+        await client.close()
+
+    status = session.get("status", "unknown")
+    status_enum = session.get("status_enum", status)
+
+    # Build progress steps from session data
+    steps: list[dict] = []
+    steps.append({"label": "Session created", "status": "done", "ts": session.get("created_at")})
+
+    if status_enum in ("running", "blocked", "stopped", "finished"):
+        steps.append({"label": "Cloning repository", "status": "done"})
+
+    if status_enum in ("running", "blocked"):
+        steps.append({"label": "Analyzing code", "status": "active"})
+    elif status_enum in ("stopped", "finished"):
+        steps.append({"label": "Analyzing code", "status": "done"})
+        steps.append({"label": "Writing fix", "status": "done"})
+
+    prs = session.get("pull_requests", [])
+    if prs:
+        steps.append({"label": "Running tests", "status": "done"})
+        steps.append({
+            "label": "PR opened",
+            "status": "done",
+            "pr_url": prs[0].get("pr_url", ""),
+        })
+    elif status_enum == "finished":
+        steps.append({"label": "Investigation complete", "status": "done"})
+
+    return {
+        "session_id": session_id,
+        "status": status,
+        "status_enum": status_enum,
+        "steps": steps,
+        "pull_requests": prs,
+        "acus_consumed": session.get("acus_consumed", 0),
+        "structured_output": session.get("structured_output"),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Eval scorecard endpoint
+# ---------------------------------------------------------------------------
+
+@router.get("/eval-scorecard")
+async def get_eval_scorecard() -> dict:
+    """Return cached eval results for the scorecard panel."""
+    eval_path = os.path.join(
+        os.path.dirname(__file__), "..", "..", "scripts", "eval_results.json"
+    )
+    eval_path = os.path.normpath(eval_path)
+    try:
+        with open(eval_path) as f:
+            return json.load(f)
+    except FileNotFoundError:
+        return {"error": "Eval results not found. Run: PYTHONPATH=. poetry run python scripts/eval_triage.py --cached"}
