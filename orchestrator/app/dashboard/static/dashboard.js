@@ -893,6 +893,11 @@ window.dismissAnnotation = function() {
 
 // Queue annotation if one is already showing
 function queueAnnotation(key) {
+    // In guide mode, always show immediately (no queuing needed)
+    if (state.guideMode) {
+        showAnnotation(key);
+        return;
+    }
     if (annoState.active) {
         if (annoState.active !== key && annoState.queue.indexOf(key) === -1) {
             annoState.queue.push(key);
@@ -940,7 +945,7 @@ function renderGuidePanel() {
     var panel = document.getElementById("guide-panel-content");
     if (!panel) return;
     if (state.guideHistory.length === 0) {
-        panel.innerHTML = '<div class="guide-empty"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><div class="empty-msg">Annotations will appear here as the pipeline runs</div><div class="empty-hint">Scan a repo or fire a demo to start</div></div>';
+        panel.innerHTML = '<div class="guide-empty"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;margin-bottom:8px"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><div style="font-size:11px;color:var(--text-muted)">Pipeline steps will appear here</div></div>';
         return;
     }
     var html = '';
@@ -949,37 +954,39 @@ function renderGuidePanel() {
         var a = ANNOTATIONS[key];
         if (!a) continue;
         var isLatest = (i === 0);
-        html += '<div class="guide-card' + (isLatest ? ' guide-latest' : '') + '">';
+        // Minimal card with left accent bar
+        var iconColors = { blue: 'var(--accent-blue)', green: 'var(--accent-green)', amber: 'var(--accent-amber)', purple: '#a78bfa', red: 'var(--accent-red)' };
+        var accentColor = iconColors[a.iconColor] || 'var(--text-muted)';
+        html += '<div class="guide-card' + (isLatest ? ' guide-latest' : '') + '" style="border-left:2px solid ' + accentColor + '">';
+        // Header: step number + title on one line
         html += '<div class="guide-card-header">';
-        html += '<div class="anno-icon ' + a.iconColor + '" style="width:28px;height:28px;border-radius:6px;">' + a.icon.replace(/width="20"/g, 'width="14"').replace(/height="20"/g, 'height="14"') + '</div>';
-        html += '<div style="flex:1;min-width:0;"><div class="guide-step">' + a.step + '</div><div class="guide-title">' + a.title + '</div></div>';
+        html += '<span class="guide-step">' + a.step + '</span>';
+        html += '<span class="guide-title">' + a.title + '</span>';
         html += '</div>';
-        // Show sections inline (compact)
+        // Body: only show first text section for compact view, expand latest
         html += '<div class="guide-body">';
         for (var s = 0; s < a.sections.length; s++) {
             var sec = a.sections[s];
+            if (sec.type === "infographic") continue; // skip infographics
             if (sec.type === "decision") {
-                html += '<div class="anno-decision ' + sec.variant + '" style="font-size:11px;padding:6px 10px;margin-top:6px;">' + sec.icon + ' ' + sec.text + '</div>';
+                html += '<div class="guide-decision ' + sec.variant + '">' + sec.text + '</div>';
             } else if (sec.type === "metrics") {
-                html += '<div class="guide-label">' + sec.label + '</div>';
-                html += '<div class="anno-metrics" style="grid-template-columns:repeat(' + sec.items.length + ',1fr);gap:4px;margin-top:4px;">';
+                html += '<div class="guide-metrics">';
                 for (var m = 0; m < sec.items.length; m++) {
-                    html += '<div class="anno-metric" style="padding:4px 3px;"><div class="anno-metric-val" style="font-size:12px;">' + sec.items[m].val + '</div><div class="anno-metric-label">' + sec.items[m].label + '</div></div>';
+                    html += '<span class="guide-metric">' + sec.items[m].val + ' <span class="guide-metric-label">' + sec.items[m].label + '</span></span>';
                 }
                 html += '</div>';
-            } else if (sec.type === "infographic") {
-                // Skip infographics in sidebar to keep compact
             } else {
-                html += '<div class="guide-label">' + sec.label + '</div>';
+                // For non-latest cards, only show first text section
+                if (!isLatest && s > 0) continue;
                 html += '<div class="guide-text">' + sec.text + '</div>';
             }
         }
         html += '</div></div>';
     }
     panel.innerHTML = html;
-    // Update step counter
     var countEl = document.getElementById("guide-count");
-    if (countEl) countEl.textContent = state.guideHistory.length + " step" + (state.guideHistory.length !== 1 ? "s" : "");
+    if (countEl) countEl.textContent = state.guideHistory.length + ' step' + (state.guideHistory.length !== 1 ? 's' : '');
 }
 
 // ---- Eval scorecard (Feature #6) ----
