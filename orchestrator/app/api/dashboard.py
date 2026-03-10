@@ -293,16 +293,29 @@ async def _run_simulated_pipeline(
     """Simulate the full pipeline with realistic delays, emitting SSE events at each stage."""
     import uuid
 
+    from app.api.webhooks import get_dispatcher
+    from app.models.alert import Investigation
+
     store = _get_metrics_store(request)
+    dispatcher = get_dispatcher(request)
     inv_id = f"inv_{uuid.uuid4().hex[:12]}"
     session_id = f"devin-{uuid.uuid4().hex[:8]}"
     data = payload["event"]["data"]
     service = data["service"]["name"]
     error_class = data["body"]["details"].get("error_class", "Unknown")
     error_msg = data["body"]["details"].get("error_message", data["title"])
+    stack_trace = data["body"]["details"].get("stack_trace", "")
     now = datetime.utcnow()
 
-    # Stage 1: Alert received (immediate)
+    # Stage 1: Alert received — create investigation in dispatcher so cards show up
+    inv = Investigation(
+        investigation_id=inv_id,
+        service_name=service,
+        dedup_key=f"sim-{inv_id}",
+        created_at=now,
+    )
+    dispatcher._investigations[inv_id] = inv
+
     activity_feed.emit(FeedEvent(
         event_type="alert_received",
         investigation_id=inv_id,
@@ -317,6 +330,9 @@ async def _run_simulated_pipeline(
     is_code = scenario == "typeerror"
     classification = "CODE_LEVEL" if is_code else "INFRASTRUCTURE"
     confidence = 0.85 if is_code else 0.95
+    inv.triage_classification = classification
+    inv.triage_confidence = confidence
+
     activity_feed.emit(FeedEvent(
         event_type="triage_complete",
         investigation_id=inv_id,
@@ -336,16 +352,6 @@ async def _run_simulated_pipeline(
             title="Escalated to human",
             detail=f"{classification} — not dispatching to Devin",
         ))
-        # Record in metrics store
-        from app.models.alert import Investigation
-        inv = Investigation(
-            investigation_id=inv_id,
-            service_name=service,
-            dedup_key=f"sim-{inv_id}",
-            triage_classification=classification,
-            triage_confidence=confidence,
-            created_at=now,
-        )
         if store:
             await store.record_investigation(inv)
         return
@@ -353,6 +359,9 @@ async def _run_simulated_pipeline(
     await asyncio.sleep(2)
 
     # Stage 3: Dispatched to Devin
+    inv.session_id = session_id
+    inv.session_status = "running"
+
     activity_feed.emit(FeedEvent(
         event_type="dispatched",
         investigation_id=inv_id,
@@ -362,18 +371,6 @@ async def _run_simulated_pipeline(
         metadata={"session_id": session_id},
     ))
 
-    # Record investigation
-    from app.models.alert import Investigation
-    inv = Investigation(
-        investigation_id=inv_id,
-        service_name=service,
-        dedup_key=f"sim-{inv_id}",
-        triage_classification=classification,
-        triage_confidence=confidence,
-        session_id=session_id,
-        session_url=f"https://app.devin.ai/sessions/{session_id.replace('devin-', '')}",
-        created_at=now,
-    )
     if store:
         await store.record_investigation(inv)
 
@@ -397,6 +394,11 @@ async def _run_simulated_pipeline(
 
     # Stage 5: PR opened
     pr_url = f"https://github.com/t1mchee/payment-service/pull/sim-{uuid.uuid4().hex[:6]}"
+    inv.session_outcome = "fix_pr"
+    inv.pr_url = pr_url
+    inv.acus_consumed = 2.4
+    inv.resolved_at = datetime.utcnow()
+
     activity_feed.emit(FeedEvent(
         event_type="pr_opened",
         investigation_id=inv_id,
@@ -406,7 +408,7 @@ async def _run_simulated_pipeline(
         metadata={"session_id": session_id, "pr_url": pr_url},
     ))
 
-    # Update investigation with PR
+    # Update metrics store with final outcome
     if store:
         await store.update_investigation_outcome(
             inv_id,
