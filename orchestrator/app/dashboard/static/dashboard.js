@@ -64,7 +64,7 @@ function connectSSE() {
             if (state.events.length > 200) state.events.length = 200;
             renderFeedItem(evt, true);
             updatePipeCounts(evt);
-            showToast(evt);
+            // showToast(evt); // disabled — too distracting during demo
             var triggers = ["dispatched","session_complete","pr_opened","triage_complete","escalated","alert_received"];
             if (triggers.indexOf(evt.event_type) !== -1) fetchInvestigations();
             // Trigger annotations for pipeline events
@@ -869,17 +869,13 @@ window.showAnnotation = function(key) {
     if (!panel) return;
     annoState.active = key;
     annoState.seen[key] = true;
-    // Add to history (prepend) — don't duplicate
+    // Append to history (bottom) — once added, stays in place
     if (state.guideHistory.indexOf(key) === -1) {
-        state.guideHistory.unshift(key);
-    } else {
-        // Move to front
-        state.guideHistory.splice(state.guideHistory.indexOf(key), 1);
-        state.guideHistory.unshift(key);
+        state.guideHistory.push(key);
     }
     renderGuidePanel();
-    // Scroll to top of panel to show latest
-    panel.scrollTop = 0;
+    // Scroll to bottom of panel to show latest step
+    panel.scrollTop = panel.scrollHeight;
 };
 
 window.dismissAnnotation = function() {
@@ -953,7 +949,7 @@ function renderGuidePanel() {
         var key = state.guideHistory[i];
         var a = ANNOTATIONS[key];
         if (!a) continue;
-        var isLatest = (i === 0);
+        var isLatest = (i === state.guideHistory.length - 1);
         // Minimal card with left accent bar
         var iconColors = { blue: 'var(--accent-blue)', green: 'var(--accent-green)', amber: 'var(--accent-amber)', purple: '#a78bfa', red: 'var(--accent-red)' };
         var accentColor = iconColors[a.iconColor] || 'var(--text-muted)';

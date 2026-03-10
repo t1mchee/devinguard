@@ -598,57 +598,66 @@
             color: var(--accent-blue);
         }
 
-        /* ---- Guide panel (sidebar) ---- */
+        /* ---- Guide panel (sidebar) — light mode ---- */
+        #guide-sidebar {
+            background: #ffffff !important; border-left: 1px solid #e5e7eb !important;
+        }
+        #guide-sidebar .sidebar-header {
+            background: #f9fafb; border-bottom: 1px solid #e5e7eb;
+            color: #111827;
+        }
+        #guide-sidebar .sidebar-header span { color: #6b7280; }
         .guide-panel-content {
-            flex: 1; overflow-y: auto; padding: 6px 8px;
+            flex: 1; overflow-y: auto; padding: 8px 10px;
+            background: #ffffff;
         }
         .guide-empty {
-            text-align: center; padding: 40px 16px; color: var(--text-muted);
+            text-align: center; padding: 40px 16px; color: #9ca3af;
             display: flex; flex-direction: column; align-items: center; gap: 4px;
         }
         .guide-card {
-            background: transparent; border: none; border-left: 2px solid var(--border-subtle);
-            border-radius: 0; padding: 8px 10px; margin-bottom: 2px;
+            background: #ffffff; border: none; border-left: 3px solid #e5e7eb;
+            border-radius: 0; padding: 10px 12px; margin-bottom: 4px;
             transition: all 0.2s; overflow: hidden;
         }
         .guide-card.guide-latest {
-            background: rgba(255,255,255,0.02);
+            background: #f0fdf4;
             animation: guideSlide 0.3s ease-out;
         }
-        @keyframes guideSlide { from { opacity:0; transform:translateY(-6px); } to { opacity:1; transform:translateY(0); } }
+        @keyframes guideSlide { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
         .guide-card-header {
             display: flex; align-items: baseline; gap: 6px; margin-bottom: 4px;
         }
         .guide-step {
-            font-size: 9px; font-weight: 600; text-transform: uppercase;
-            letter-spacing: 0.3px; color: var(--text-muted); white-space: nowrap;
+            font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.4px; color: #9ca3af; white-space: nowrap;
         }
-        .guide-title { font-size: 12px; font-weight: 600; color: var(--text-primary); line-height: 1.3; }
+        .guide-title { font-size: 12px; font-weight: 600; color: #111827; line-height: 1.3; }
         .guide-body { font-size: 11px; overflow: hidden; word-break: break-word; }
         .guide-text {
-            font-size: 11px; line-height: 1.5; color: var(--text-muted);
+            font-size: 11px; line-height: 1.5; color: #4b5563;
             overflow-wrap: break-word; word-break: break-word; margin-top: 2px;
         }
         .guide-text code, .guide-body code {
-            font-size: 10px; background: var(--bg-tertiary); padding: 1px 4px;
-            border-radius: 3px; word-break: break-all;
+            font-size: 10px; background: #f3f4f6; padding: 1px 4px;
+            border-radius: 3px; word-break: break-all; color: #1f2937;
         }
-        .guide-text strong { color: var(--text-secondary); font-weight: 600; }
+        .guide-text strong { color: #111827; font-weight: 600; }
         .guide-decision {
-            font-size: 10px; color: var(--text-muted); margin-top: 4px;
+            font-size: 10px; color: #6b7280; margin-top: 4px;
             padding: 4px 0; font-style: italic;
         }
-        .guide-decision.to-devin { color: var(--accent-blue); }
-        .guide-decision.to-human { color: var(--accent-amber); }
-        .guide-decision.complete { color: var(--accent-green); }
+        .guide-decision.to-devin { color: #2563eb; }
+        .guide-decision.to-human { color: #d97706; }
+        .guide-decision.complete { color: #16a34a; }
         .guide-metrics {
             display: flex; gap: 8px; margin-top: 4px;
         }
         .guide-metric {
-            font-size: 11px; font-weight: 600; color: var(--text-secondary);
+            font-size: 11px; font-weight: 600; color: #374151;
         }
         .guide-metric .guide-metric-label {
-            font-weight: 400; color: var(--text-muted); font-size: 10px;
+            font-weight: 400; color: #9ca3af; font-size: 10px;
         }
 
         /* ---- Condensed investigation cards ---- */
