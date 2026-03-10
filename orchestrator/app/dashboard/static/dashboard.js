@@ -8,6 +8,8 @@ var state = {
     events: [],
     pipe: { alert: 0, triage: 0, dispatch: 0, investigating: 0, resolved: 0 },
     sseConnected: false,
+    guideMode: false,
+    guideHistory: [],
     sessionPollers: {},   // session_id -> interval
     evalData: null,
     activeTab: "pipeline"
@@ -352,45 +354,37 @@ function renderCards() {
         var pipeDots = getPipeDots(inv);
         var elapsed = getElapsed(inv);
 
-        // Mini pipeline
+        // Mini pipeline dots
         var dotsHtml = "";
         for (var d = 0; d < pipeDots.length; d++) {
             dotsHtml += '<div class="mini-dot ' + pipeDots[d] + '"></div>';
         }
 
-        // Triage info
-        var triageHtml = "";
+        // Compact classification line
+        var classLine = "";
         if (inv.triage_classification) {
-            triageHtml = '<div class="inv-triage">Classification: <span class="conf">' +
-                esc(inv.triage_classification) + '</span>' +
-                (inv.triage_confidence ? ' \u2014 ' + (inv.triage_confidence * 100).toFixed(0) + '% confidence' : '') +
-                '</div>';
+            classLine = '<span class="conf">' + esc(inv.triage_classification) + '</span>';
+            if (inv.triage_confidence) classLine += ' <span class="conf-pct">' + (inv.triage_confidence * 100).toFixed(0) + '%</span>';
         }
-
-        // Resolution timeline (Feature #5)
-        var timelineHtml = '<div class="res-timeline" id="steps-' + inv.investigation_id + '">';
-        timelineHtml += buildTimeline(inv);
-        timelineHtml += '</div>';
 
         // Actions
         var actHtml = "";
-        if (inv.session_url) actHtml += '<a href="' + esc(inv.session_url) + '" target="_blank">View Session</a>';
-        if (inv.pr_url) actHtml += '<a href="' + esc(inv.pr_url) + '" target="_blank">View PR</a>';
+        if (inv.session_url) actHtml += '<a href="' + esc(inv.session_url) + '" target="_blank">Session</a>';
+        if (inv.pr_url) actHtml += '<a href="' + esc(inv.pr_url) + '" target="_blank">PR</a>';
 
         html += '<div class="inv-card ' + cardCls + '">' +
-            '<div class="inv-card-top"><span class="inv-id">' + esc(inv.investigation_id) + '</span>' +
+            '<div class="inv-card-top"><span class="inv-id">' + esc(inv.service_name || "Unknown") + '</span>' +
             '<span class="badge ' + badgeCls + '"><span class="bdot"></span>' + label + '</span></div>' +
-            '<div class="inv-service">' + esc(inv.service_name || "Unknown") + '</div>' +
-            '<div class="inv-error">' + esc((inv.triage_classification || "") + ": ") + getErrorSummary(inv) + '</div>' +
+            '<div class="inv-error">' + getErrorSummary(inv) + '</div>' +
+            '<div class="inv-card-row">' +
             '<div class="mini-pipe">' + dotsHtml + '</div>' +
-            triageHtml +
-            timelineHtml +
-            '<div class="inv-meta">' +
-            (elapsed ? '<span class="inv-timer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ' + elapsed + '</span>' : '') +
-            (inv.acus_consumed ? '<span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> ' + inv.acus_consumed.toFixed(1) + ' ACU</span>' : '') +
+            (classLine ? '<div class="inv-class-inline">' + classLine + '</div>' : '') +
             '</div>' +
-            '<div class="inv-actions">' + actHtml + '</div>' +
-            '</div>';
+            '<div class="inv-card-footer">' +
+            (elapsed ? '<span class="inv-timer"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ' + elapsed + '</span>' : '') +
+            (inv.acus_consumed ? '<span class="inv-acu"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> ' + inv.acus_consumed.toFixed(1) + '</span>' : '') +
+            '<span class="inv-actions-inline">' + actHtml + '</span>' +
+            '</div></div>';
     }
     grid.innerHTML = html;
 
@@ -870,41 +864,30 @@ function buildAnnoHTML(key) {
 }
 
 window.showAnnotation = function(key) {
-    var popup = document.getElementById("anno-popup");
-    var overlay = document.getElementById("anno-overlay");
-    if (!popup || !overlay) return;
-    // Clear any auto-dismiss timer
-    if (annoState.autoTimer) { clearTimeout(annoState.autoTimer); annoState.autoTimer = null; }
+    if (!state.guideMode) return; // Only show when guide mode is ON
+    var panel = document.getElementById("guide-panel-content");
+    if (!panel) return;
     annoState.active = key;
     annoState.seen[key] = true;
-    popup.innerHTML = buildAnnoHTML(key);
-    // Position: center of screen
-    popup.style.top = "50%";
-    popup.style.left = "50%";
-    popup.style.transform = "translate(-50%, -50%) scale(0.97)";
-    // Show
-    requestAnimationFrame(function() {
-        overlay.classList.add("visible");
-        popup.classList.add("visible");
-        popup.style.transform = "translate(-50%, -50%) scale(1)";
-    });
-    // Auto-dismiss after 12 seconds
-    annoState.autoTimer = setTimeout(function() {
-        dismissAnnotation();
-    }, 12000);
+    // Add to history (prepend) — don't duplicate
+    if (state.guideHistory.indexOf(key) === -1) {
+        state.guideHistory.unshift(key);
+    } else {
+        // Move to front
+        state.guideHistory.splice(state.guideHistory.indexOf(key), 1);
+        state.guideHistory.unshift(key);
+    }
+    renderGuidePanel();
+    // Scroll to top of panel to show latest
+    panel.scrollTop = 0;
 };
 
 window.dismissAnnotation = function() {
-    var popup = document.getElementById("anno-popup");
-    var overlay = document.getElementById("anno-overlay");
-    if (popup) popup.classList.remove("visible");
-    if (overlay) overlay.classList.remove("visible");
-    if (annoState.autoTimer) { clearTimeout(annoState.autoTimer); annoState.autoTimer = null; }
     annoState.active = null;
     // Process queue
     if (annoState.queue.length > 0) {
         var next = annoState.queue.shift();
-        setTimeout(function() { showAnnotation(next); }, 400);
+        setTimeout(function() { showAnnotation(next); }, 300);
     }
 };
 
@@ -932,6 +915,72 @@ window.showPipeInfo = function(stageKey, evt) {
     var annoKey = map[stageKey];
     if (annoKey) showAnnotation(annoKey);
 };
+
+
+// ---- Guide Mode ----
+window.toggleGuideMode = function() {
+    state.guideMode = !state.guideMode;
+    var btn = document.getElementById("guide-toggle");
+    var sidebar = document.querySelector(".sidebar");
+    var guidePanel = document.getElementById("guide-sidebar");
+    var activityFeed = document.getElementById("activity-feed");
+    if (state.guideMode) {
+        if (btn) { btn.classList.add("active"); btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Guide On'; }
+        if (guidePanel) guidePanel.style.display = "flex";
+        if (activityFeed) activityFeed.style.display = "none";
+        renderGuidePanel();
+    } else {
+        if (btn) { btn.classList.remove("active"); btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Guide'; }
+        if (guidePanel) guidePanel.style.display = "none";
+        if (activityFeed) activityFeed.style.display = "flex";
+    }
+};
+
+function renderGuidePanel() {
+    var panel = document.getElementById("guide-panel-content");
+    if (!panel) return;
+    if (state.guideHistory.length === 0) {
+        panel.innerHTML = '<div class="guide-empty"><div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div><div class="empty-msg">Annotations will appear here as the pipeline runs</div><div class="empty-hint">Scan a repo or fire a demo to start</div></div>';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < state.guideHistory.length; i++) {
+        var key = state.guideHistory[i];
+        var a = ANNOTATIONS[key];
+        if (!a) continue;
+        var isLatest = (i === 0);
+        html += '<div class="guide-card' + (isLatest ? ' guide-latest' : '') + '">';
+        html += '<div class="guide-card-header">';
+        html += '<div class="anno-icon ' + a.iconColor + '" style="width:28px;height:28px;border-radius:6px;">' + a.icon.replace(/width="20"/g, 'width="14"').replace(/height="20"/g, 'height="14"') + '</div>';
+        html += '<div style="flex:1;min-width:0;"><div class="guide-step">' + a.step + '</div><div class="guide-title">' + a.title + '</div></div>';
+        html += '</div>';
+        // Show sections inline (compact)
+        html += '<div class="guide-body">';
+        for (var s = 0; s < a.sections.length; s++) {
+            var sec = a.sections[s];
+            if (sec.type === "decision") {
+                html += '<div class="anno-decision ' + sec.variant + '" style="font-size:11px;padding:6px 10px;margin-top:6px;">' + sec.icon + ' ' + sec.text + '</div>';
+            } else if (sec.type === "metrics") {
+                html += '<div class="guide-label">' + sec.label + '</div>';
+                html += '<div class="anno-metrics" style="grid-template-columns:repeat(' + sec.items.length + ',1fr);gap:4px;margin-top:4px;">';
+                for (var m = 0; m < sec.items.length; m++) {
+                    html += '<div class="anno-metric" style="padding:4px 3px;"><div class="anno-metric-val" style="font-size:12px;">' + sec.items[m].val + '</div><div class="anno-metric-label">' + sec.items[m].label + '</div></div>';
+                }
+                html += '</div>';
+            } else if (sec.type === "infographic") {
+                // Skip infographics in sidebar to keep compact
+            } else {
+                html += '<div class="guide-label">' + sec.label + '</div>';
+                html += '<div class="guide-text">' + sec.text + '</div>';
+            }
+        }
+        html += '</div></div>';
+    }
+    panel.innerHTML = html;
+    // Update step counter
+    var countEl = document.getElementById("guide-count");
+    if (countEl) countEl.textContent = state.guideHistory.length + " step" + (state.guideHistory.length !== 1 ? "s" : "");
+}
 
 // ---- Eval scorecard (Feature #6) ----
 function loadEvalData() {

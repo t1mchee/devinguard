@@ -202,10 +202,10 @@
         .demo-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
         /* ---- Investigation cards ---- */
-        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 10px; margin-bottom: 20px; }
+        .cards-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 8px; margin-bottom: 20px; }
         .inv-card {
             background: var(--bg-secondary); border: 1px solid var(--border-subtle);
-            border-radius: var(--radius); padding: 16px 18px;
+            border-radius: var(--radius-sm); padding: 12px 14px;
             transition: border-color 0.2s;
         }
         .inv-card:hover { border-color: var(--border); }
@@ -584,6 +584,81 @@
             transition: width 0.1s linear;
         }
 
+        /* ---- Guide Mode toggle ---- */
+        .guide-toggle {
+            padding: 6px 12px; border-radius: var(--radius-xs);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            border: 1px solid var(--border); background: var(--bg-tertiary);
+            color: var(--text-muted); transition: all 0.15s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .guide-toggle:hover { border-color: var(--text-muted); color: var(--text-secondary); }
+        .guide-toggle.active {
+            background: var(--accent-blue-dim); border-color: var(--accent-blue);
+            color: var(--accent-blue);
+        }
+
+        /* ---- Guide panel (sidebar) ---- */
+        .guide-panel-content {
+            flex: 1; overflow-y: auto; padding: 8px;
+        }
+        .guide-empty {
+            text-align: center; padding: 32px 16px; color: var(--text-muted);
+        }
+        .guide-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px;
+            transition: border-color 0.2s;
+        }
+        .guide-card.guide-latest {
+            border-color: var(--accent-blue);
+            animation: guideSlide 0.3s ease-out;
+        }
+        @keyframes guideSlide { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
+        .guide-card-header {
+            display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+        }
+        .guide-step {
+            font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted);
+        }
+        .guide-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+        .guide-body { font-size: 11px; }
+        .guide-label {
+            font-size: 9px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.4px; color: var(--text-muted); margin: 6px 0 3px;
+        }
+        .guide-text {
+            font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+        }
+        .guide-text strong { color: var(--text-primary); font-weight: 600; }
+
+        /* ---- Condensed investigation cards ---- */
+        .inv-card-row {
+            display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+        }
+        .inv-class-inline {
+            font-size: 10px; color: var(--text-muted); white-space: nowrap;
+        }
+        .inv-class-inline .conf { font-weight: 600; color: var(--text-secondary); }
+        .inv-class-inline .conf-pct {
+            color: var(--text-muted); font-size: 10px;
+        }
+        .inv-card-footer {
+            display: flex; align-items: center; gap: 10px;
+            font-size: 10px; color: var(--text-muted);
+            padding-top: 6px; border-top: 1px solid var(--border-subtle);
+        }
+        .inv-card-footer .inv-timer { font-family: monospace; color: var(--accent-blue); display: flex; align-items: center; gap: 3px; }
+        .inv-card-footer .inv-acu { display: flex; align-items: center; gap: 3px; }
+        .inv-actions-inline { margin-left: auto; display: flex; gap: 4px; }
+        .inv-actions-inline a {
+            font-size: 10px; color: var(--accent-blue); text-decoration: none;
+            padding: 2px 8px; border: 1px solid var(--border);
+            border-radius: var(--radius-xs); transition: all 0.15s; font-weight: 500;
+        }
+        .inv-actions-inline a:hover { background: var(--bg-tertiary); border-color: var(--text-muted); }
+
         /* ---- Scrollbar ---- */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -598,6 +673,7 @@
             <h1>DevinGuard</h1>
         </div>
         <div class="header-right">
+            <button class="guide-toggle" id="guide-toggle" onclick="toggleGuideMode()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg> Guide</button>
             <div class="conn-badge">
                 <span class="conn-dot" id="conn-dot"></span>
                 <span id="conn-text">Connecting...</span>
@@ -732,22 +808,37 @@
         </div>
 
         <div class="sidebar">
-            <div class="sidebar-head">
-                <span class="sidebar-title">Activity Feed</span>
-                <span class="sidebar-count" id="feed-count">0 events</span>
+            <!-- Activity Feed (default) -->
+            <div id="activity-feed" style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+                <div class="sidebar-head">
+                    <span class="sidebar-title">Activity Feed</span>
+                    <span class="sidebar-count" id="feed-count">0 events</span>
+                </div>
+                <div class="feed-list" id="feed-list">
+                    <div class="empty-state" id="feed-empty" style="padding:32px;">
+                        <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg></div>
+                        <div class="empty-msg">Waiting for events...</div>
+                    </div>
+                </div>
             </div>
-            <div class="feed-list" id="feed-list">
-                <div class="empty-state" id="feed-empty" style="padding:32px;">
-                    <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg></div>
-                    <div class="empty-msg">Waiting for events...</div>
+            <!-- Guide Mode panel (hidden by default) -->
+            <div id="guide-sidebar" style="display:none;flex-direction:column;flex:1;overflow:hidden;">
+                <div class="sidebar-head">
+                    <span class="sidebar-title">Pipeline Guide</span>
+                    <span class="sidebar-count guide-count" id="guide-count">0 steps</span>
+                </div>
+                <div class="guide-panel-content" id="guide-panel-content">
+                    <div class="guide-empty">
+                        <div class="empty-icon"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg></div>
+                        <div class="empty-msg">Annotations appear here as the pipeline runs</div>
+                        <div class="empty-hint">Scan a repo or fire a demo to start</div>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 
     <div class="toast-container" id="toast-container"></div>
-    <div class="anno-overlay" id="anno-overlay" onclick="dismissAnnotation()"></div>
-    <div class="anno-popup" id="anno-popup"></div>
 
     <script src="/static/dashboard.js"></script>
 </body>
