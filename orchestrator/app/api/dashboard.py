@@ -439,71 +439,75 @@ _CODE_BUG_PATTERNS: list[dict] = [
 async def _scan_source_files(
     owner: str, repo: str, token: str, branch: str = "main",
 ) -> list[dict]:
-    """Fetch source files from a GitHub repo and scan for bug patterns.
+    """Clone a GitHub repo and scan source files for bug patterns.
 
-    Uses the GitHub Contents API to recursively list files, then downloads
-    and analyzes each source file (.ts, .js, .py, .go, .java, .rs) for
-    known bug patterns using regex matching.
+    Clones the repo via git (works for both public and private repos that the
+    git proxy has access to), then walks source files looking for:
+    1. Explicit BUG:/FIXME:/HACK: comment markers
+    2. Regex-based pattern matching for known vulnerability classes
     """
     import re
-
-    headers: dict[str, str] = {"Accept": "application/vnd.github.v3+json"}
-    if token and token != "ghp_xxx":
-        headers["Authorization"] = f"token {token}"
+    import shutil
+    import subprocess
+    import tempfile
+    from pathlib import Path
 
     source_extensions = {".ts", ".js", ".py", ".go", ".java", ".rs", ".tsx", ".jsx"}
     findings: list[dict] = []
 
-    async with httpx.AsyncClient(timeout=30) as client:
-        # Fetch the repo file tree using the Git Trees API (recursive)
-        tree_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
-        resp = await client.get(tree_url, headers=headers)
-        if resp.status_code != 200:
-            logger.warning(f"Failed to fetch tree for {owner}/{repo}@{branch}: {resp.status_code}")
+    # Clone repo to temp directory using git (the git proxy handles auth)
+    clone_url = f"https://git-manager.devin.ai/proxy/github.com/{owner}/{repo}.git"
+    tmp_dir = tempfile.mkdtemp(prefix="devinguard-scan-")
+
+    try:
+        proc = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: subprocess.run(
+                ["git", "clone", "--depth", "1", "--branch", branch, clone_url, tmp_dir],
+                capture_output=True, text=True, timeout=30,
+            ),
+        )
+        if proc.returncode != 0:
+            logger.warning(f"Failed to clone {owner}/{repo}@{branch}: {proc.stderr[:200]}")
             return findings
 
-        tree = resp.json()
+        repo_root = Path(tmp_dir)
+
+        # Walk source files
+        source_files: list[Path] = []
+        for ext in source_extensions:
+            source_files.extend(repo_root.rglob(f"*{ext}"))
+
+        # Filter out node_modules, dist, test files
         source_files = [
-            item for item in tree.get("tree", [])
-            if item.get("type") == "blob"
-            and any(item["path"].endswith(ext) for ext in source_extensions)
-            and "node_modules" not in item["path"]
-            and "dist/" not in item["path"]
-            and "test" not in item["path"].lower()
+            f for f in source_files
+            if "node_modules" not in str(f)
+            and "/dist/" not in str(f)
+            and "test" not in f.name.lower()
+            and ".d.ts" not in f.name
         ]
 
-        # Fetch each source file and scan for bug patterns
-        for file_info in source_files[:20]:  # Cap at 20 files to stay within rate limits
-            file_path = file_info["path"]
-            content_url = f"https://api.github.com/repos/{owner}/{repo}/contents/{file_path}?ref={branch}"
-            file_resp = await client.get(content_url, headers=headers)
-            if file_resp.status_code != 200:
-                continue
-
-            file_data = file_resp.json()
-            # Content is base64-encoded
-            import base64
+        for src_file in source_files[:30]:
             try:
-                content = base64.b64decode(file_data.get("content", "")).decode("utf-8", errors="replace")
+                content = src_file.read_text(encoding="utf-8", errors="replace")
             except Exception:
                 continue
 
+            # Relative path from repo root
+            file_path = str(src_file.relative_to(repo_root))
             lines = content.split("\n")
 
-            # Check for BUG: / FIXME: / HACK: comments first (explicit markers)
+            # Check for BUG: / FIXME: / HACK: comments (explicit markers)
             for line_num, line in enumerate(lines, 1):
                 line_stripped = line.strip()
                 for marker in ["BUG:", "FIXME:", "HACK:"]:
                     if marker in line_stripped and line_stripped.lstrip("/ *#").startswith(marker):
-                        # Extract the bug description from the comment
                         desc = line_stripped.split(marker, 1)[1].strip()
                         if len(desc) < 10:
                             continue
-                        # Look at surrounding lines for more context
                         context_lines = lines[max(0, line_num - 2):min(len(lines), line_num + 5)]
                         context = "\n".join(context_lines)
 
-                        # Infer error class from description
                         desc_lower = desc.lower()
                         error_class = "RuntimeError"
                         if "race" in desc_lower or "toctou" in desc_lower or "concurrent" in desc_lower:
@@ -538,7 +542,7 @@ async def _scan_source_files(
                     matches = list(re.finditer(pattern_def["pattern"], content, re.MULTILINE))
                 except re.error:
                     continue
-                for match in matches[:3]:  # Cap matches per pattern per file
+                for match in matches[:3]:
                     match_line = content[:match.start()].count("\n") + 1
                     context_start = max(0, match_line - 3)
                     context_end = min(len(lines), match_line + 4)
@@ -556,6 +560,10 @@ async def _scan_source_files(
                         "matched_text": match.group(0)[:100],
                         "context": context[:500],
                     })
+
+    finally:
+        # Clean up temp directory
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # Deduplicate findings by (file, error_class) — keep the highest severity one
     seen: dict[str, dict] = {}
