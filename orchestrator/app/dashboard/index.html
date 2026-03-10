@@ -608,7 +608,7 @@
         .guide-card {
             background: var(--bg-secondary); border: 1px solid var(--border-subtle);
             border-radius: var(--radius-sm); padding: 12px; margin-bottom: 8px;
-            transition: border-color 0.2s;
+            transition: border-color 0.2s; overflow: hidden;
         }
         .guide-card.guide-latest {
             border-color: var(--accent-blue);
@@ -623,13 +623,18 @@
             letter-spacing: 0.5px; color: var(--text-muted);
         }
         .guide-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
-        .guide-body { font-size: 11px; }
+        .guide-body { font-size: 11px; overflow: hidden; word-break: break-word; }
         .guide-label {
             font-size: 9px; font-weight: 700; text-transform: uppercase;
             letter-spacing: 0.4px; color: var(--text-muted); margin: 6px 0 3px;
         }
         .guide-text {
             font-size: 11px; line-height: 1.5; color: var(--text-secondary);
+            overflow-wrap: break-word; word-break: break-word;
+        }
+        .guide-text code, .guide-body code {
+            font-size: 10px; background: var(--bg-tertiary); padding: 1px 4px;
+            border-radius: 3px; word-break: break-all;
         }
         .guide-text strong { color: var(--text-primary); font-weight: 600; }
 
