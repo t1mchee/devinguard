@@ -1012,31 +1012,19 @@ async def scan_repository(
             deduped.append(payload)
     alert_payloads = deduped[:body.max_issues]
 
-    # Process each alert through the pipeline.
-    # Use simulated dispatch so CODE_LEVEL bugs get the full demo flow
-    # (dispatched → investigating → PR opened) without needing real Devin sessions.
+    # Process each alert through the real pipeline.
+    # CODE_LEVEL bugs get dispatched to real Devin sessions.
     dispatcher = get_dispatcher(request)
     results = []
-    first_code_level_simulated = False
     for payload in alert_payloads:
         try:
             alert = normalize_pagerduty(payload)
             result = await dispatcher.handle_alert(alert)
-            # For the first CODE_LEVEL alert, kick off a simulated pipeline
-            # so the demo shows the full dispatch → investigate → PR flow.
-            # Check both dispatched_to_devin and dispatch_failed (the real
-            # Devin API may fail, but triage still classified it as code-level).
-            if (
-                not first_code_level_simulated
-                and result.get("action") in ("dispatched_to_devin", "dispatch_failed")
-            ):
-                first_code_level_simulated = True
+            # If dispatched to Devin, start monitoring in background
+            # (same as webhook handler does) so we get pr_opened events
+            if result.get("action") == "dispatched_to_devin":
                 inv_id = result["investigation_id"]
-                inv = dispatcher.get_investigation(inv_id)
-                if inv:
-                    background_tasks.add_task(
-                        _run_simulated_dispatch, request, inv, alert
-                    )
+                background_tasks.add_task(dispatcher.monitor_session, inv_id)
             results.append(result)
         except Exception as e:
             logger.error(f"Failed to process scanned issue: {e}")
