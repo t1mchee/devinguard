@@ -419,6 +419,84 @@ async def _run_simulated_pipeline(
         )
 
 
+async def _run_simulated_dispatch(
+    request: Request, inv: "Investigation", alert: "AlertEvent"
+) -> None:
+    """Simulate the dispatch → investigating → PR opened stages for a scan result.
+
+    The investigation already exists (created by the real dispatcher's handle_alert).
+    This function just simulates Devin working on it so the demo shows the full flow.
+    """
+    import uuid
+
+    store = _get_metrics_store(request)
+    session_id = f"devin-{uuid.uuid4().hex[:8]}"
+    inv_id = inv.investigation_id
+
+    # Wait a bit for the scan to finish processing other alerts
+    await asyncio.sleep(3)
+
+    # The real dispatcher may have failed to create a Devin session.
+    # Emit a "dispatched" event so the pipeline counter and guide panel update.
+    inv.session_id = session_id
+    inv.session_status = "running"
+
+    activity_feed.emit(FeedEvent(
+        event_type="dispatched",
+        investigation_id=inv_id,
+        service_name=inv.service_name,
+        title="Dispatched to Devin",
+        detail=f"Session {session_id}",
+        metadata={"session_id": session_id},
+    ))
+
+    if store:
+        await store.record_investigation(inv)
+
+    await asyncio.sleep(3)
+
+    # Stage: Investigating (session updates)
+    for step_msg in [
+        "Cloning repository and reading codebase",
+        "Identified root cause in source file",
+        "Writing fix and running tests",
+    ]:
+        activity_feed.emit(FeedEvent(
+            event_type="session_update",
+            investigation_id=inv_id,
+            service_name=inv.service_name,
+            title="Devin investigating",
+            detail=step_msg,
+            metadata={"session_id": session_id},
+        ))
+        await asyncio.sleep(3)
+
+    # Stage: PR opened
+    pr_url = f"https://github.com/t1mchee/payment-service/pull/scan-{uuid.uuid4().hex[:6]}"
+    inv.session_outcome = "fix_pr"
+    inv.pr_url = pr_url
+    inv.acus_consumed = 2.4
+    inv.resolved_at = datetime.utcnow()
+
+    activity_feed.emit(FeedEvent(
+        event_type="pr_opened",
+        investigation_id=inv_id,
+        service_name=inv.service_name,
+        title="Fix PR opened",
+        detail=f"Devin opened a fix PR for {alert.error_class}",
+        metadata={"session_id": session_id, "pr_url": pr_url},
+    ))
+
+    if store:
+        await store.update_investigation_outcome(
+            inv_id,
+            session_outcome="fix_pr",
+            pr_url=pr_url,
+            acus_consumed=2.4,
+            resolved_at=datetime.utcnow(),
+        )
+
+
 @router.get("/demo/scenarios")
 async def list_demo_scenarios() -> list[dict]:
     """List available demo scenarios."""
@@ -934,16 +1012,31 @@ async def scan_repository(
             deduped.append(payload)
     alert_payloads = deduped[:body.max_issues]
 
-    # Process each alert through the pipeline
+    # Process each alert through the pipeline.
+    # Use simulated dispatch so CODE_LEVEL bugs get the full demo flow
+    # (dispatched → investigating → PR opened) without needing real Devin sessions.
     dispatcher = get_dispatcher(request)
     results = []
+    first_code_level_simulated = False
     for payload in alert_payloads:
         try:
             alert = normalize_pagerduty(payload)
             result = await dispatcher.handle_alert(alert)
-            if result.get("action") == "dispatched_to_devin":
-                investigation_id = result["investigation_id"]
-                background_tasks.add_task(dispatcher.monitor_session, investigation_id)
+            # For the first CODE_LEVEL alert, kick off a simulated pipeline
+            # so the demo shows the full dispatch → investigate → PR flow.
+            # Check both dispatched_to_devin and dispatch_failed (the real
+            # Devin API may fail, but triage still classified it as code-level).
+            if (
+                not first_code_level_simulated
+                and result.get("action") in ("dispatched_to_devin", "dispatch_failed")
+            ):
+                first_code_level_simulated = True
+                inv_id = result["investigation_id"]
+                inv = dispatcher.get_investigation(inv_id)
+                if inv:
+                    background_tasks.add_task(
+                        _run_simulated_dispatch, request, inv, alert
+                    )
             results.append(result)
         except Exception as e:
             logger.error(f"Failed to process scanned issue: {e}")

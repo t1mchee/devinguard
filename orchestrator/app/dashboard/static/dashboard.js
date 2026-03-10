@@ -863,16 +863,18 @@ function buildAnnoHTML(key) {
     return html;
 }
 
+// Canonical step order — guide panel always renders in this sequence
+var STEP_ORDER = ['scan_initiated','alert_created','triage_code','triage_infra','dispatched','investigating','pr_opened','escalation_action'];
+
 window.showAnnotation = function(key) {
-    if (!state.guideMode) return; // Only show when guide mode is ON
+    // Always track the step even if guide mode is off (so toggling on later shows all steps)
+    if (state.guideHistory.indexOf(key) !== -1) return; // already tracked
+    state.guideHistory.push(key);
+    if (!state.guideMode) return;
     var panel = document.getElementById("guide-panel-content");
     if (!panel) return;
     annoState.active = key;
     annoState.seen[key] = true;
-    // Append to history (bottom) — once added, stays in place
-    // Skip re-render if step already exists (prevents flashing)
-    if (state.guideHistory.indexOf(key) !== -1) return;
-    state.guideHistory.push(key);
     renderGuidePanel();
     // Scroll to bottom of panel to show latest step
     panel.scrollTop = panel.scrollHeight;
@@ -940,16 +942,21 @@ window.toggleGuideMode = function() {
 function renderGuidePanel() {
     var panel = document.getElementById("guide-panel-content");
     if (!panel) return;
-    if (state.guideHistory.length === 0) {
+    // Build ordered list: render steps in canonical order, but only those present in guideHistory
+    var ordered = [];
+    for (var s = 0; s < STEP_ORDER.length; s++) {
+        if (state.guideHistory.indexOf(STEP_ORDER[s]) !== -1) ordered.push(STEP_ORDER[s]);
+    }
+    if (ordered.length === 0) {
         panel.innerHTML = '<div class="guide-empty"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="opacity:0.4;margin-bottom:8px"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg><div style="font-size:11px;color:var(--text-muted)">Pipeline steps will appear here</div></div>';
         return;
     }
     var html = '';
-    for (var i = 0; i < state.guideHistory.length; i++) {
-        var key = state.guideHistory[i];
+    for (var i = 0; i < ordered.length; i++) {
+        var key = ordered[i];
         var a = ANNOTATIONS[key];
         if (!a) continue;
-        var isLatest = (i === state.guideHistory.length - 1);
+        var isLatest = (i === ordered.length - 1);
         // Minimal card with left accent bar
         var iconColors = { blue: 'var(--accent-blue)', green: 'var(--accent-green)', amber: 'var(--accent-amber)', purple: '#a78bfa', red: 'var(--accent-red)' };
         var accentColor = iconColors[a.iconColor] || 'var(--text-muted)';
@@ -982,7 +989,7 @@ function renderGuidePanel() {
     }
     panel.innerHTML = html;
     var countEl = document.getElementById("guide-count");
-    if (countEl) countEl.textContent = state.guideHistory.length + ' step' + (state.guideHistory.length !== 1 ? 's' : '');
+    if (countEl) countEl.textContent = ordered.length + ' step' + (ordered.length !== 1 ? 's' : '');
 }
 
 // ---- Eval scorecard (Feature #6) ----
