@@ -19,7 +19,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.config import settings
-from app.events.feed import activity_feed
+from app.events.feed import FeedEvent, activity_feed
 
 if TYPE_CHECKING:
     from app.metrics.store import MetricsStore
@@ -912,6 +912,135 @@ async def get_session_status(request: Request, session_id: str) -> dict:
         "acus_consumed": session.get("acus_consumed", 0),
         "structured_output": session.get("structured_output"),
     }
+
+
+# ---------------------------------------------------------------------------
+# Escalations — human review panel
+# ---------------------------------------------------------------------------
+
+
+@router.get("/escalations")
+async def list_escalations(request: Request) -> list[dict]:
+    """Return all escalated investigations with triage reasoning."""
+    from app.api.webhooks import get_dispatcher
+
+    dispatcher = get_dispatcher(request)
+    investigations = dispatcher.list_investigations()
+    escalated = []
+    for inv in investigations:
+        if inv.triage_classification and inv.triage_classification != "CODE_LEVEL":
+            d = inv.model_dump()
+            # Attach triage reasoning from activity feed events
+            reasoning = ""
+            for evt in activity_feed.recent(200):
+                if (
+                    evt.investigation_id == inv.investigation_id
+                    and evt.event_type == "triage_complete"
+                ):
+                    reasoning = evt.detail or ""
+                    break
+            d["triage_reasoning"] = reasoning
+            # Attach escalation status (default: pending_review)
+            d["escalation_status"] = getattr(inv, "_escalation_status", "pending_review")
+            d["escalation_action"] = getattr(inv, "_escalation_action", None)
+            escalated.append(d)
+    return escalated
+
+
+class EscalationAction(BaseModel):
+    action: Literal["acknowledge", "reassign_to_devin", "dismiss"]
+    reason: Optional[str] = None
+
+
+@router.post("/escalations/{investigation_id}/action")
+async def escalation_action(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    investigation_id: str,
+    body: EscalationAction,
+) -> dict:
+    """Take action on an escalated investigation."""
+    from app.api.webhooks import get_dispatcher
+
+    dispatcher = get_dispatcher(request)
+    inv = dispatcher.get_investigation(investigation_id)
+    if not inv:
+        return {"error": "Investigation not found"}
+
+    if body.action == "acknowledge":
+        inv._escalation_status = "acknowledged"  # type: ignore[attr-defined]
+        inv._escalation_action = "acknowledge"  # type: ignore[attr-defined]
+        activity_feed.emit(FeedEvent(
+            event_type="escalated",
+            investigation_id=investigation_id,
+            service_name=inv.service_name,
+            title="Human acknowledged escalation",
+            detail=body.reason or "Acknowledged by operator",
+        ))
+        return {"status": "acknowledged", "investigation_id": investigation_id}
+
+    elif body.action == "reassign_to_devin":
+        # Override triage and dispatch to Devin
+        inv.triage_classification = "CODE_LEVEL"
+        inv._escalation_status = "reassigned"  # type: ignore[attr-defined]
+        inv._escalation_action = "reassign_to_devin"  # type: ignore[attr-defined]
+
+        activity_feed.emit(FeedEvent(
+            event_type="dispatched",
+            investigation_id=investigation_id,
+            service_name=inv.service_name,
+            title="Reassigned to Devin by human",
+            detail=body.reason or "Human override — dispatching to Devin",
+        ))
+
+        # Create a Devin session for this investigation
+        from app.core.devin_client import DevinAPIClient
+        from app.models.devin import CreateSessionRequest
+
+        client = DevinAPIClient()
+        try:
+            prompt = (
+                f"Investigate and fix the issue in {inv.service_name}.\n"
+                f"Dedup key: {inv.dedup_key}\n"
+                f"Original classification: {inv.triage_classification}\n"
+                f"Reason for reassignment: {body.reason or 'Human override'}"
+            )
+            session_req = CreateSessionRequest(
+                prompt=prompt,
+                repos=[settings.github_repo] if settings.github_repo else None,
+                max_acu_limit=10,
+                tags=["devinguard", f"inv:{investigation_id}", "human-override"],
+                title=f"[DevinGuard] Human override: {inv.service_name}",
+            )
+            session_data = await client.create_session(session_req)
+            inv.session_id = session_data["session_id"]
+            inv.session_status = session_data.get("status", "new")
+
+            background_tasks.add_task(dispatcher.monitor_session, investigation_id)
+
+            return {
+                "status": "reassigned",
+                "investigation_id": investigation_id,
+                "session_id": session_data["session_id"],
+            }
+        except Exception as e:
+            return {"status": "reassign_failed", "error": str(e)}
+        finally:
+            await client.close()
+
+    elif body.action == "dismiss":
+        inv._escalation_status = "dismissed"  # type: ignore[attr-defined]
+        inv._escalation_action = "dismiss"  # type: ignore[attr-defined]
+        activity_feed.emit(FeedEvent(
+            event_type="escalated",
+            investigation_id=investigation_id,
+            service_name=inv.service_name,
+            title="Escalation dismissed",
+            detail=body.reason or "Dismissed by operator",
+        ))
+        return {"status": "dismissed", "investigation_id": investigation_id}
+
+    return {"error": "Unknown action"}
 
 
 # ---------------------------------------------------------------------------

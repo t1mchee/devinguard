@@ -346,6 +346,75 @@
             100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
         }
 
+        /* ---- Escalations panel ---- */
+        .esc-panel { display: none; }
+        .esc-panel.visible { display: block; }
+        .esc-list { display: flex; flex-direction: column; gap: 12px; }
+        .esc-card {
+            background: var(--bg-secondary); border: 1px solid var(--border-subtle);
+            border-radius: var(--radius); padding: 18px 20px;
+            transition: border-color 0.2s;
+        }
+        .esc-card:hover { border-color: var(--border); }
+        .esc-card.esc-pending { border-left: 3px solid var(--accent-amber); }
+        .esc-card.esc-acknowledged { border-left: 3px solid var(--accent-blue); }
+        .esc-card.esc-dismissed { border-left: 3px solid var(--text-muted); opacity: 0.6; }
+        .esc-card.esc-reassigned { border-left: 3px solid var(--accent-green); }
+        .esc-card-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+        .esc-service { font-size: 15px; font-weight: 600; }
+        .esc-status-badge {
+            display: inline-flex; align-items: center; gap: 5px;
+            padding: 3px 10px; border-radius: 20px;
+            font-size: 11px; font-weight: 600;
+        }
+        .esc-status-pending { background: var(--accent-amber-dim); color: var(--accent-amber); }
+        .esc-status-acknowledged { background: var(--accent-blue-dim); color: var(--accent-blue); }
+        .esc-status-dismissed { background: var(--bg-tertiary); color: var(--text-muted); }
+        .esc-status-reassigned { background: var(--accent-green-dim); color: var(--accent-green); }
+        .esc-classification {
+            display: inline-flex; align-items: center; gap: 6px;
+            font-size: 12px; font-weight: 600; color: var(--accent-amber);
+            background: var(--accent-amber-dim); padding: 4px 10px;
+            border-radius: var(--radius-xs); margin-bottom: 10px;
+        }
+        .esc-reasoning {
+            background: var(--bg-primary); border-radius: var(--radius-xs);
+            padding: 12px 14px; margin-bottom: 12px;
+            font-size: 12px; line-height: 1.6; color: var(--text-secondary);
+            border-left: 2px solid var(--accent-amber);
+        }
+        .esc-reasoning-label {
+            font-size: 10px; font-weight: 700; text-transform: uppercase;
+            letter-spacing: 0.5px; color: var(--text-muted); margin-bottom: 6px;
+        }
+        .esc-meta { display: flex; gap: 16px; font-size: 11px; color: var(--text-muted); margin-bottom: 12px; }
+        .esc-meta span { display: flex; align-items: center; gap: 4px; }
+        .esc-actions { display: flex; gap: 8px; }
+        .esc-action-btn {
+            padding: 7px 14px; border-radius: var(--radius-xs);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            border: 1px solid var(--border); background: var(--bg-tertiary);
+            color: var(--text-primary); transition: all 0.15s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .esc-action-btn:hover { background: var(--bg-elevated); border-color: var(--text-muted); }
+        .esc-action-btn:active { transform: scale(0.97); }
+        .esc-action-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .esc-action-btn.esc-ack { border-color: var(--accent-blue); color: var(--accent-blue); }
+        .esc-action-btn.esc-ack:hover { background: var(--accent-blue-dim); }
+        .esc-action-btn.esc-reassign { border-color: var(--accent-green); color: var(--accent-green); }
+        .esc-action-btn.esc-reassign:hover { background: var(--accent-green-dim); }
+        .esc-action-btn.esc-dismiss { border-color: var(--text-muted); color: var(--text-muted); }
+        .esc-action-btn.esc-dismiss:hover { background: var(--bg-tertiary); }
+        .esc-tab-count {
+            display: inline-flex; align-items: center; justify-content: center;
+            min-width: 18px; height: 18px; border-radius: 9px;
+            background: var(--accent-amber); color: #000;
+            font-size: 10px; font-weight: 700; margin-left: 6px;
+            padding: 0 5px;
+        }
+        .esc-tab-count:empty { display: none; }
+
         /* ---- Eval scorecard ---- */
         .eval-panel { display: none; }
         .eval-panel.visible { display: block; }
@@ -396,6 +465,7 @@
     </div>
     <div class="nav-tabs">
         <button class="nav-tab active" data-tab="pipeline" onclick="switchTab('pipeline')">Pipeline</button>
+        <button class="nav-tab" data-tab="escalations" onclick="switchTab('escalations')">Escalations <span class="esc-tab-count" id="esc-tab-count"></span></button>
         <button class="nav-tab" data-tab="eval" onclick="switchTab('eval')">Eval Scorecard</button>
     </div>
     <div class="app-layout">
@@ -475,6 +545,20 @@
                         <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg></div>
                         <div class="empty-msg">No investigations yet</div>
                         <div class="empty-hint">Click a demo button above to start the pipeline</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Escalations tab -->
+            <div id="tab-escalations" class="esc-panel">
+                <div class="section-head" style="margin-top:4px;">
+                    <div class="section-title">Escalated Investigations</div>
+                </div>
+                <div class="esc-list" id="esc-list">
+                    <div class="empty-state" id="esc-empty">
+                        <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div>
+                        <div class="empty-msg">No escalations yet</div>
+                        <div class="empty-hint">Infrastructure and non-code alerts will appear here for human review</div>
                     </div>
                 </div>
             </div>

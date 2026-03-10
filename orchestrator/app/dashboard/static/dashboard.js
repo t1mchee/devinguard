@@ -4,6 +4,7 @@
 // ---- State ----
 var state = {
     investigations: [],
+    escalations: [],
     events: [],
     pipe: { alert: 0, triage: 0, dispatch: 0, investigating: 0, resolved: 0 },
     sseConnected: false,
@@ -38,8 +39,11 @@ window.switchTab = function(tab) {
         t.classList.toggle("active", t.dataset.tab === tab);
     });
     document.getElementById("tab-pipeline").style.display = tab === "pipeline" ? "block" : "none";
+    document.getElementById("tab-escalations").style.display = tab === "escalations" ? "block" : "none";
+    document.getElementById("tab-escalations").classList.toggle("visible", tab === "escalations");
     document.getElementById("tab-eval").style.display = tab === "eval" ? "block" : "none";
     document.getElementById("tab-eval").classList.toggle("visible", tab === "eval");
+    if (tab === "escalations") fetchEscalations();
     if (tab === "eval" && !state.evalData) loadEvalData();
 };
 
@@ -503,6 +507,122 @@ function renderAllFeed() {
     for (var i = 0; i < state.events.length; i++) renderFeedItem(state.events[i], false);
 }
 
+// ---- Escalations panel ----
+function fetchEscalations() {
+    fetchJSON(API + "/escalations").then(function(data) {
+        if (Array.isArray(data)) {
+            state.escalations = data;
+            renderEscalations();
+            updateEscalationCount();
+        }
+    }).catch(function() {});
+}
+
+function updateEscalationCount() {
+    var pending = state.escalations.filter(function(e) {
+        return e.escalation_status === "pending_review";
+    }).length;
+    var badge = document.getElementById("esc-tab-count");
+    if (badge) badge.textContent = pending > 0 ? pending : "";
+}
+
+function renderEscalations() {
+    var list = document.getElementById("esc-list");
+    if (!list) return;
+    var items = state.escalations;
+    if (!items.length) {
+        list.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></div><div class="empty-msg">No escalations yet</div><div class="empty-hint">Infrastructure and non-code alerts will appear here for human review</div></div>';
+        return;
+    }
+    var html = "";
+    for (var i = 0; i < items.length; i++) {
+        var e = items[i];
+        var statusCls = "esc-pending";
+        var badgeCls = "esc-status-pending";
+        var badgeLabel = "Pending Review";
+        if (e.escalation_status === "acknowledged") { statusCls = "esc-acknowledged"; badgeCls = "esc-status-acknowledged"; badgeLabel = "Acknowledged"; }
+        else if (e.escalation_status === "dismissed") { statusCls = "esc-dismissed"; badgeCls = "esc-status-dismissed"; badgeLabel = "Dismissed"; }
+        else if (e.escalation_status === "reassigned") { statusCls = "esc-reassigned"; badgeCls = "esc-status-reassigned"; badgeLabel = "Reassigned to Devin"; }
+
+        var elapsed = "";
+        if (e.created_at) {
+            var sec = Math.floor((Date.now() - new Date(e.created_at).getTime()) / 1000);
+            elapsed = sec < 60 ? sec + "s ago" : Math.floor(sec / 60) + "m ago";
+        }
+
+        var actionsHtml = "";
+        if (e.escalation_status === "pending_review") {
+            actionsHtml = '<div class="esc-actions">' +
+                '<button class="esc-action-btn esc-ack" onclick="escalationAction(\'' + esc(e.investigation_id) + '\', \'acknowledge\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg> Acknowledge</button>' +
+                '<button class="esc-action-btn esc-reassign" onclick="escalationAction(\'' + esc(e.investigation_id) + '\', \'reassign_to_devin\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg> Reassign to Devin</button>' +
+                '<button class="esc-action-btn esc-dismiss" onclick="escalationAction(\'' + esc(e.investigation_id) + '\', \'dismiss\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> Dismiss</button>' +
+                '</div>';
+        } else if (e.escalation_status === "acknowledged") {
+            actionsHtml = '<div class="esc-actions">' +
+                '<button class="esc-action-btn esc-reassign" onclick="escalationAction(\'' + esc(e.investigation_id) + '\', \'reassign_to_devin\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg> Reassign to Devin</button>' +
+                '<button class="esc-action-btn esc-dismiss" onclick="escalationAction(\'' + esc(e.investigation_id) + '\', \'dismiss\')">' +
+                '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg> Dismiss</button>' +
+                '</div>';
+        }
+
+        html += '<div class="esc-card ' + statusCls + '">' +
+            '<div class="esc-card-header">' +
+            '<span class="esc-service">' + esc(e.service_name || "Unknown") + '</span>' +
+            '<span class="esc-status-badge ' + badgeCls + '">' + badgeLabel + '</span>' +
+            '</div>' +
+            '<div class="esc-classification"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg> ' + esc(e.triage_classification || "UNKNOWN") + '</div>' +
+            (e.triage_reasoning ? '<div class="esc-reasoning"><div class="esc-reasoning-label">Triage Reasoning</div>' + esc(e.triage_reasoning) + '</div>' : '') +
+            '<div class="esc-meta">' +
+            '<span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ' + elapsed + '</span>' +
+            '<span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg> ' + esc(e.investigation_id) + '</span>' +
+            (e.triage_confidence ? '<span>Confidence: ' + (e.triage_confidence * 100).toFixed(0) + '%</span>' : '') +
+            '</div>' +
+            actionsHtml +
+            '</div>';
+    }
+    list.innerHTML = html;
+}
+
+window.escalationAction = function(investigationId, action) {
+    var btns = document.querySelectorAll(".esc-action-btn");
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = true;
+
+    fetch(API + "/escalations/" + investigationId + "/action", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({action: action}),
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            showToast("escalated", "Error", data.error);
+        } else {
+            var labels = {
+                acknowledge: "Acknowledged",
+                reassign_to_devin: "Reassigned to Devin",
+                dismiss: "Dismissed"
+            };
+            showToast(
+                action === "reassign_to_devin" ? "dispatched" : "escalated",
+                labels[action] || action,
+                "Investigation " + investigationId
+            );
+            // Refresh data
+            setTimeout(function() { fetchEscalations(); fetchInvestigations(); }, 500);
+        }
+    })
+    .catch(function() {
+        showToast("escalated", "Error", "Failed to perform action");
+    })
+    .finally(function() {
+        for (var i = 0; i < btns.length; i++) btns[i].disabled = false;
+    });
+};
+
 // ---- Eval scorecard (Feature #6) ----
 function loadEvalData() {
     fetchJSON(API + "/eval-scorecard").then(function(data) {
@@ -583,10 +703,13 @@ function updateTimers() {
 function init() {
     fetchInvestigations();
     fetchRecentEvents();
+    fetchEscalations();
     setTimeout(connectSSE, 500);
     setInterval(fetchInvestigations, 10000);
+    setInterval(fetchEscalations, 10000);
     setInterval(updateTimers, 1000);
-    // Hide eval tab by default
+    // Hide non-active tabs by default
+    document.getElementById("tab-escalations").style.display = "none";
     document.getElementById("tab-eval").style.display = "none";
 }
 
