@@ -119,7 +119,7 @@ function fetchRecentEvents() {
 window.fireDemoScenario = function(scenario) {
     var btn = document.getElementById("btn-" + scenario);
     if (btn) { btn.disabled = true; btn.textContent = "Firing\u2026"; }
-    fetch(API + "/demo/trigger?scenario=" + scenario, { method: "POST" })
+    fetch(API + "/demo/trigger?scenario=" + scenario + "&simulate=true", { method: "POST" })
         .then(function(r) { return r.json(); })
         .then(function() {
             if (btn) {

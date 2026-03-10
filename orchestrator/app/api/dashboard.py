@@ -258,14 +258,23 @@ async def trigger_demo(
     request: Request,
     background_tasks: BackgroundTasks,
     scenario: str = "typeerror",
+    simulate: bool = False,
 ) -> dict:
-    """Fire a demo webhook through the pipeline. No curl needed."""
+    """Fire a demo webhook through the pipeline.
+
+    If simulate=true, runs a full simulated pipeline (no real Devin session)
+    that walks through all stages including Fix PR Opened.
+    """
     from app.api.webhooks import get_dispatcher
     from app.webhooks.normalizers import normalize_pagerduty
 
     payload = _DEMO_PAYLOADS.get(scenario)
     if not payload:
         return {"error": f"Unknown scenario: {scenario}", "available": list(_DEMO_PAYLOADS.keys())}
+
+    if simulate:
+        background_tasks.add_task(_run_simulated_pipeline, request, scenario, payload)
+        return {"action": "simulated", "scenario": scenario, "message": "Full pipeline simulation started"}
 
     alert = normalize_pagerduty(payload)
     dispatcher = get_dispatcher(request)
@@ -276,6 +285,136 @@ async def trigger_demo(
         background_tasks.add_task(dispatcher.monitor_session, investigation_id)
 
     return result
+
+
+async def _run_simulated_pipeline(
+    request: Request, scenario: str, payload: dict
+) -> None:
+    """Simulate the full pipeline with realistic delays, emitting SSE events at each stage."""
+    import uuid
+
+    store = _get_metrics_store(request)
+    inv_id = f"inv_{uuid.uuid4().hex[:12]}"
+    session_id = f"devin-{uuid.uuid4().hex[:8]}"
+    data = payload["event"]["data"]
+    service = data["service"]["name"]
+    error_class = data["body"]["details"].get("error_class", "Unknown")
+    error_msg = data["body"]["details"].get("error_message", data["title"])
+    now = datetime.utcnow()
+
+    # Stage 1: Alert received (immediate)
+    activity_feed.emit(FeedEvent(
+        event_type="alert_received",
+        investigation_id=inv_id,
+        service_name=service,
+        title=f"Alert received: {error_class}",
+        detail=f"{error_class}: {error_msg}",
+    ))
+
+    await asyncio.sleep(2)
+
+    # Stage 2: Triage complete
+    is_code = scenario == "typeerror"
+    classification = "CODE_LEVEL" if is_code else "INFRASTRUCTURE"
+    confidence = 0.85 if is_code else 0.95
+    activity_feed.emit(FeedEvent(
+        event_type="triage_complete",
+        investigation_id=inv_id,
+        service_name=service,
+        title=f"Triage: {classification}",
+        detail=f"Confidence {confidence:.0%} — {'Classic application bug with clear error type' if is_code else 'Infrastructure issue — requires scaling, not code changes'}",
+        metadata={"classification": classification, "confidence": confidence},
+    ))
+
+    if not is_code:
+        # Escalate to human
+        await asyncio.sleep(1)
+        activity_feed.emit(FeedEvent(
+            event_type="escalated",
+            investigation_id=inv_id,
+            service_name=service,
+            title="Escalated to human",
+            detail=f"{classification} — not dispatching to Devin",
+        ))
+        # Record in metrics store
+        from app.models.alert import Investigation
+        inv = Investigation(
+            investigation_id=inv_id,
+            service_name=service,
+            dedup_key=f"sim-{inv_id}",
+            triage_classification=classification,
+            triage_confidence=confidence,
+            created_at=now,
+        )
+        if store:
+            await store.record_investigation(inv)
+        return
+
+    await asyncio.sleep(2)
+
+    # Stage 3: Dispatched to Devin
+    activity_feed.emit(FeedEvent(
+        event_type="dispatched",
+        investigation_id=inv_id,
+        service_name=service,
+        title="Dispatched to Devin",
+        detail=f"Session {session_id}",
+        metadata={"session_id": session_id},
+    ))
+
+    # Record investigation
+    from app.models.alert import Investigation
+    inv = Investigation(
+        investigation_id=inv_id,
+        service_name=service,
+        dedup_key=f"sim-{inv_id}",
+        triage_classification=classification,
+        triage_confidence=confidence,
+        session_id=session_id,
+        session_url=f"https://app.devin.ai/sessions/{session_id.replace('devin-', '')}",
+        created_at=now,
+    )
+    if store:
+        await store.record_investigation(inv)
+
+    await asyncio.sleep(3)
+
+    # Stage 4: Investigating (session updates)
+    for step_msg in [
+        "Cloning repository and reading codebase",
+        "Identified root cause in source file",
+        "Writing fix and running tests",
+    ]:
+        activity_feed.emit(FeedEvent(
+            event_type="session_update",
+            investigation_id=inv_id,
+            service_name=service,
+            title="Devin investigating",
+            detail=step_msg,
+            metadata={"session_id": session_id},
+        ))
+        await asyncio.sleep(3)
+
+    # Stage 5: PR opened
+    pr_url = f"https://github.com/t1mchee/payment-service/pull/sim-{uuid.uuid4().hex[:6]}"
+    activity_feed.emit(FeedEvent(
+        event_type="pr_opened",
+        investigation_id=inv_id,
+        service_name=service,
+        title="Fix PR opened",
+        detail=f"Devin opened a fix PR for {error_class}",
+        metadata={"session_id": session_id, "pr_url": pr_url},
+    ))
+
+    # Update investigation with PR
+    if store:
+        await store.update_investigation_outcome(
+            inv_id,
+            session_outcome="fix_pr",
+            pr_url=pr_url,
+            acus_consumed=2.4,
+            resolved_at=datetime.utcnow(),
+        )
 
 
 @router.get("/demo/scenarios")
