@@ -125,17 +125,54 @@
             text-transform: uppercase; letter-spacing: 0.5px;
         }
 
-        /* ---- Demo trigger bar ---- */
-        .demo-bar {
-            display: flex; gap: 8px; margin-bottom: 20px; padding: 14px 16px;
+        /* ---- Scan Repository bar ---- */
+        .scan-bar {
+            margin-bottom: 20px; padding: 16px 18px;
             background: var(--bg-secondary); border: 1px solid var(--border-subtle);
             border-radius: var(--radius);
         }
-        .demo-bar-label {
+        .scan-row {
+            display: flex; gap: 10px; align-items: center;
+        }
+        .scan-label {
             font-size: 12px; font-weight: 600; color: var(--text-muted);
             text-transform: uppercase; letter-spacing: 0.5px;
-            display: flex; align-items: center; margin-right: 8px;
+            display: flex; align-items: center; gap: 6px; white-space: nowrap;
         }
+        .scan-label svg { flex-shrink: 0; }
+        .scan-input-wrap { flex: 1; }
+        .scan-input {
+            width: 100%; padding: 8px 12px; font-size: 13px;
+            background: var(--bg-primary); border: 1px solid var(--border);
+            border-radius: var(--radius-xs); color: var(--text-primary);
+            font-family: 'SF Mono', 'Fira Code', monospace;
+            outline: none; transition: border-color 0.15s;
+        }
+        .scan-input:focus { border-color: var(--accent-green); }
+        .scan-input::placeholder { color: var(--text-muted); }
+        .scan-btn {
+            padding: 8px 18px; border-radius: var(--radius-xs);
+            font-size: 12px; font-weight: 600; cursor: pointer;
+            border: 1px solid var(--accent-green); background: var(--accent-green); color: #000;
+            display: flex; align-items: center; gap: 6px; white-space: nowrap;
+            transition: all 0.15s;
+        }
+        .scan-btn:hover { background: #16a34a; }
+        .scan-btn:active { transform: scale(0.97); }
+        .scan-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .scan-status {
+            font-size: 12px; color: var(--text-secondary); margin-top: 8px;
+            min-height: 0; transition: all 0.2s;
+        }
+        .scan-status:empty { margin-top: 0; }
+        .scan-divider {
+            display: flex; align-items: center; gap: 12px;
+            margin: 14px 0 10px; color: var(--text-muted); font-size: 11px;
+        }
+        .scan-divider::before, .scan-divider::after {
+            content: ''; flex: 1; height: 1px; background: var(--border-subtle);
+        }
+        .demo-row { display: flex; gap: 8px; }
         .demo-btn {
             padding: 7px 14px; border-radius: var(--radius-xs);
             font-size: 12px; font-weight: 600; cursor: pointer;
@@ -314,6 +351,16 @@
         .eval-bar-fill { height: 6px; border-radius: 3px; background: var(--accent-green); }
         .eval-bar-track { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-tertiary); overflow: hidden; }
 
+        /* ---- SVG Icons ---- */
+        .feed-icon svg, .toast-icon svg { vertical-align: middle; }
+        .btn-icon { display: inline-flex; align-items: center; }
+        .btn-icon svg { width: 14px; height: 14px; }
+        .pipe-icon svg { width: 20px; height: 20px; }
+        .empty-icon svg { opacity: 0.5; }
+        .inv-meta svg { width: 12px; height: 12px; vertical-align: middle; }
+        .scan-label svg { vertical-align: middle; }
+        .pipe-arrow svg { width: 14px; height: 14px; }
+
         /* ---- Scrollbar ---- */
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -367,29 +414,41 @@
 
                 <div class="pipeline-box">
                     <div class="pipeline-flow">
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-alert">&#x1F6A8;</div><div class="pipe-count" id="p-alert-n">0</div><div class="pipe-label">Alert<br>Received</div></div>
-                        <div class="pipe-arrow" id="a1">&#x25B8;</div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-triage">&#x1F50E;</div><div class="pipe-count" id="p-triage-n">0</div><div class="pipe-label">Triage<br>Classified</div></div>
-                        <div class="pipe-arrow" id="a2">&#x25B8;</div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-dispatch">&#x1F680;</div><div class="pipe-count" id="p-dispatch-n">0</div><div class="pipe-label">Dispatched<br>to Devin</div></div>
-                        <div class="pipe-arrow" id="a3">&#x25B8;</div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-invest">&#x1F9E0;</div><div class="pipe-count" id="p-invest-n">0</div><div class="pipe-label">Devin<br>Investigating</div></div>
-                        <div class="pipe-arrow" id="a4">&#x25B8;</div>
-                        <div class="pipe-stage"><div class="pipe-icon" id="p-resolved">&#x2705;</div><div class="pipe-count" id="p-resolved-n">0</div><div class="pipe-label">Fix PR<br>Opened</div></div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-alert"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div><div class="pipe-count" id="p-alert-n">0</div><div class="pipe-label">Alert<br>Received</div></div>
+                        <div class="pipe-arrow" id="a1"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-triage"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div><div class="pipe-count" id="p-triage-n">0</div><div class="pipe-label">Triage<br>Classified</div></div>
+                        <div class="pipe-arrow" id="a2"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-dispatch"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg></div><div class="pipe-count" id="p-dispatch-n">0</div><div class="pipe-label">Dispatched<br>to Devin</div></div>
+                        <div class="pipe-arrow" id="a3"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-invest"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg></div><div class="pipe-count" id="p-invest-n">0</div><div class="pipe-label">Devin<br>Investigating</div></div>
+                        <div class="pipe-arrow" id="a4"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg></div>
+                        <div class="pipe-stage"><div class="pipe-icon" id="p-resolved"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></div><div class="pipe-count" id="p-resolved-n">0</div><div class="pipe-label">Fix PR<br>Opened</div></div>
                     </div>
                 </div>
 
-                <div class="demo-bar" id="demo-bar">
-                    <div class="demo-bar-label">&#x26A1; Demo</div>
-                    <button class="demo-btn primary" onclick="fireDemoScenario('typeerror')" id="btn-typeerror">
-                        <span>&#x1F41B;</span> TypeError
-                    </button>
-                    <button class="demo-btn" onclick="fireDemoScenario('oomkilled')" id="btn-oomkilled">
-                        <span>&#x1F4A5;</span> OOMKilled
-                    </button>
-                    <button class="demo-btn" onclick="fireDemoScenario('latency')" id="btn-latency">
-                        <span>&#x23F1;</span> Latency Spike
-                    </button>
+                <div class="scan-bar" id="scan-bar">
+                    <div class="scan-row">
+                        <div class="scan-label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg> Scan Repository</div>
+                        <div class="scan-input-wrap">
+                            <input type="text" class="scan-input" id="scan-repo-url" value="https://github.com/t1mchee/payment-service" placeholder="https://github.com/owner/repo" />
+                        </div>
+                        <button class="scan-btn primary" onclick="scanRepository()" id="btn-scan">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage
+                        </button>
+                    </div>
+                    <div class="scan-status" id="scan-status"></div>
+                    <div class="scan-divider"><span>or use demo scenarios</span></div>
+                    <div class="demo-row">
+                        <button class="demo-btn" onclick="fireDemoScenario('typeerror')" id="btn-typeerror">
+                            <span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg></span> TypeError
+                        </button>
+                        <button class="demo-btn" onclick="fireDemoScenario('oomkilled')" id="btn-oomkilled">
+                            <span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg></span> OOMKilled
+                        </button>
+                        <button class="demo-btn" onclick="fireDemoScenario('latency')" id="btn-latency">
+                            <span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Latency Spike
+                        </button>
+                    </div>
                 </div>
 
                 <div class="section-head">
@@ -397,7 +456,7 @@
                 </div>
                 <div class="cards-grid" id="cards-grid">
                     <div class="empty-state" id="empty-cards">
-                        <div class="empty-icon">&#x1F4E1;</div>
+                        <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg></div>
                         <div class="empty-msg">No investigations yet</div>
                         <div class="empty-hint">Click a demo button above to start the pipeline</div>
                     </div>
@@ -438,7 +497,7 @@
             </div>
             <div class="feed-list" id="feed-list">
                 <div class="empty-state" id="feed-empty" style="padding:32px;">
-                    <div class="empty-icon">&#x23F3;</div>
+                    <div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg></div>
                     <div class="empty-msg">Waiting for events...</div>
                 </div>
             </div>

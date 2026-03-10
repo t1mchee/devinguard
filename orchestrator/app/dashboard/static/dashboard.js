@@ -13,22 +13,22 @@ var state = {
 };
 var API = "/api/dashboard";
 var ICONS = {
-    alert_received: "\ud83d\udea8",
-    dedup_hit: "\ud83d\udd01",
-    triage_complete: "\ud83d\udd0e",
-    dispatched: "\ud83d\ude80",
-    session_update: "\ud83e\udde0",
-    session_complete: "\u2705",
-    pr_opened: "\ud83c\udf89",
-    escalated: "\u26a0\ufe0f"
+    alert_received: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    dedup_hit: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>',
+    triage_complete: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+    dispatched: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+    session_update: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><path d="M15 2v2"/><path d="M15 20v2"/><path d="M2 15h2"/><path d="M2 9h2"/><path d="M20 15h2"/><path d="M20 9h2"/><path d="M9 2v2"/><path d="M9 20v2"/></svg>',
+    session_complete: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>',
+    pr_opened: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/></svg>',
+    escalated: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>'
 };
 var TOAST_ICONS = {
-    alert_received: "\ud83d\udea8",
-    triage_complete: "\ud83d\udd0e",
-    dispatched: "\ud83d\ude80",
-    pr_opened: "\ud83c\udf89",
-    escalated: "\u26a0\ufe0f",
-    session_complete: "\u2705"
+    alert_received: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    triage_complete: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>',
+    dispatched: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4z"/><path d="M22 2 11 13"/></svg>',
+    pr_opened: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5.8 11.3 2 22l10.7-3.79"/><path d="M4 3h.01"/><path d="M22 8h.01"/><path d="M15 2h.01"/><path d="M22 20h.01"/><path d="m22 2-2.24.75a2.9 2.9 0 0 0-1.96 3.12c.1.86-.57 1.63-1.45 1.63h-.38c-.86 0-1.6.6-1.76 1.44L14 10"/><path d="m22 13-.82-.33c-.86-.34-1.82.2-1.98 1.11c-.11.7-.72 1.22-1.43 1.22H17"/><path d="m11 2 .33.82c.34.86-.2 1.82-1.11 1.98C9.52 4.9 9 5.52 9 6.23V7"/></svg>',
+    escalated: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>',
+    session_complete: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>'
 };
 
 // ---- Tab switching ----
@@ -108,7 +108,7 @@ window.fireDemoScenario = function(scenario) {
                 btn.textContent = "Sent!";
                 setTimeout(function() {
                     btn.disabled = false;
-                    var labels = { typeerror: "\ud83d\udc1b TypeError", oomkilled: "\ud83d\udca5 OOMKilled", latency: "\u23f1\ufe0f Latency Spike" };
+                    var labels = { typeerror: '<span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m8 2 1.88 1.88"/><path d="M14.12 3.88 16 2"/><path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1"/><path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6"/><path d="M12 20v-9"/><path d="M6.53 9C4.6 8.8 3 7.1 3 5"/><path d="M6 13H2"/><path d="M3 21c0-2.1 1.7-3.9 3.8-4"/><path d="M20.97 5c0 2.1-1.6 3.8-3.5 4"/><path d="M22 13h-4"/><path d="M17.2 17c2.1.1 3.8 1.9 3.8 4"/></svg></span> TypeError', oomkilled: '<span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="8" x="2" y="2" rx="2" ry="2"/><rect width="20" height="8" x="2" y="14" rx="2" ry="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/></svg></span> OOMKilled', latency: '<span class="btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span> Latency Spike' };
                     btn.innerHTML = labels[scenario] || scenario;
                 }, 2000);
             }
@@ -116,6 +116,44 @@ window.fireDemoScenario = function(scenario) {
         .catch(function() {
             if (btn) { btn.disabled = false; btn.textContent = "Error"; }
         });
+};
+
+// ---- Scan Repository ----
+window.scanRepository = function() {
+    var input = document.getElementById("scan-repo-url");
+    var btn = document.getElementById("btn-scan");
+    var statusEl = document.getElementById("scan-status");
+    var repoUrl = input ? input.value.trim() : "";
+    if (!repoUrl) { if (statusEl) statusEl.textContent = "Please enter a repository URL"; return; }
+
+    if (btn) { btn.disabled = true; btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Scanning\u2026'; }
+    if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-blue)">Scanning repository for issues and error patterns\u2026</span>';
+
+    fetch(API + "/scan-repo", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo_url: repoUrl, max_issues: 5 })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        if (data.error) {
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">' + data.error + '</span>';
+        } else {
+            var msg = 'Found ' + data.issues_found + ' issues, ' + data.error_commits_found + ' error commits. Created ' + data.alerts_created + ' alerts.';
+            if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-green)">' + msg + '</span>';
+        }
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage';
+        }
+    })
+    .catch(function(err) {
+        if (statusEl) statusEl.innerHTML = '<span style="color:var(--accent-red)">Scan failed: ' + err.message + '</span>';
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg> Scan &amp; Triage';
+        }
+    });
 };
 
 // ---- Session polling (Feature #2: Live Devin progress) ----
@@ -281,7 +319,7 @@ function renderCards() {
     var grid = document.getElementById("cards-grid");
     var invs = state.investigations;
     if (!invs.length) {
-        grid.innerHTML = '<div class="empty-state"><div class="empty-icon">&#x1F4E1;</div><div class="empty-msg">No investigations yet</div><div class="empty-hint">Click a demo button above to start the pipeline</div></div>';
+        grid.innerHTML = '<div class="empty-state"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M19.07 4.93A10 10 0 0 0 6.99 3.34"/><path d="M4 6h.01"/><path d="M2.29 9.62A10 10 0 1 0 21.31 8.35"/><path d="M16.24 7.76A6 6 0 1 0 8.23 16.67"/><path d="M12 18h.01"/><circle cx="12" cy="12" r="2"/><path d="m13.41 10.59 5.66-5.66"/></svg></div><div class="empty-msg">No investigations yet</div><div class="empty-hint">Click a demo button above to start the pipeline</div></div>';
         return;
     }
     var html = "";
@@ -328,8 +366,8 @@ function renderCards() {
             triageHtml +
             timelineHtml +
             '<div class="inv-meta">' +
-            (elapsed ? '<span class="inv-timer">&#x23F1; ' + elapsed + '</span>' : '') +
-            (inv.acus_consumed ? '<span>&#x26A1; ' + inv.acus_consumed.toFixed(1) + ' ACU</span>' : '') +
+            (elapsed ? '<span class="inv-timer"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ' + elapsed + '</span>' : '') +
+            (inv.acus_consumed ? '<span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg> ' + inv.acus_consumed.toFixed(1) + ' ACU</span>' : '') +
             '</div>' +
             '<div class="inv-actions">' + actHtml + '</div>' +
             '</div>';
@@ -456,7 +494,7 @@ function renderAllFeed() {
     var list = document.getElementById("feed-list");
     list.innerHTML = "";
     if (!state.events.length) {
-        list.innerHTML = '<div class="empty-state" id="feed-empty" style="padding:32px;"><div class="empty-icon">&#x23F3;</div><div class="empty-msg">Waiting for events...</div></div>';
+        list.innerHTML = '<div class="empty-state" id="feed-empty" style="padding:32px;"><div class="empty-icon"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14"/><path d="M5 2h14"/><path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"/><path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"/></svg></div><div class="empty-msg">Waiting for events...</div></div>';
         return;
     }
     for (var i = 0; i < state.events.length; i++) renderFeedItem(state.events[i], false);

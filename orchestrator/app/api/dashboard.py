@@ -1,7 +1,7 @@
 """Dashboard API endpoints.
 
 Provides metrics and investigation data for the operator dashboard,
-including real-time activity feed via SSE.
+including real-time activity feed via SSE and repository scanning.
 """
 
 from __future__ import annotations
@@ -13,9 +13,12 @@ import os
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Literal, Optional
 
+import httpx
 from fastapi import APIRouter, BackgroundTasks, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
+from app.config import settings
 from app.events.feed import activity_feed
 
 if TYPE_CHECKING:
@@ -288,6 +291,264 @@ async def list_demo_scenarios() -> list[dict]:
             "error_class": data["body"]["details"]["error_class"],
         })
     return scenarios
+
+
+# ---------------------------------------------------------------------------
+# Scan Repository — discover real bugs from a GitHub repo
+# ---------------------------------------------------------------------------
+
+
+class ScanRepoRequest(BaseModel):
+    repo_url: str = "https://github.com/t1mchee/payment-service"
+    max_issues: int = 5
+
+
+async def _fetch_github_issues(owner: str, repo: str, token: str, max_issues: int) -> list[dict]:
+    """Fetch open bug-labeled issues from a GitHub repository."""
+    headers: dict[str, str] = {"Accept": "application/vnd.github.v3+json"}
+    if token and token != "ghp_xxx":
+        headers["Authorization"] = f"token {token}"
+    issues: list[dict] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Try bug-labeled issues first
+        url = f"https://api.github.com/repos/{owner}/{repo}/issues"
+        params = {"state": "open", "labels": "bug", "per_page": max_issues, "sort": "updated"}
+        resp = await client.get(url, headers=headers, params=params)
+        if resp.status_code == 200:
+            issues = resp.json()
+
+        # If not enough bug-labeled issues, also fetch recent issues
+        if len(issues) < max_issues:
+            params_all = {"state": "open", "per_page": max_issues * 2, "sort": "updated"}
+            resp2 = await client.get(url, headers=headers, params=params_all)
+            if resp2.status_code == 200:
+                seen_ids = {i["id"] for i in issues}
+                for issue in resp2.json():
+                    if issue["id"] not in seen_ids and not issue.get("pull_request"):
+                        issues.append(issue)
+                        if len(issues) >= max_issues:
+                            break
+    return issues[:max_issues]
+
+
+async def _fetch_error_patterns(owner: str, repo: str, token: str) -> list[dict]:
+    """Scan recent commits for error-related patterns (TypeError, catch blocks, etc.)."""
+    headers: dict[str, str] = {"Accept": "application/vnd.github.v3+json"}
+    if token and token != "ghp_xxx":
+        headers["Authorization"] = f"token {token}"
+    patterns: list[dict] = []
+    async with httpx.AsyncClient(timeout=30) as client:
+        # Get recent commits
+        url = f"https://api.github.com/repos/{owner}/{repo}/commits"
+        resp = await client.get(url, headers=headers, params={"per_page": 20})
+        if resp.status_code != 200:
+            return patterns
+
+        commits = resp.json()
+        error_keywords = ["fix", "bug", "error", "crash", "exception", "null", "undefined", "TypeError", "fail"]
+
+        for commit in commits:
+            msg = commit.get("commit", {}).get("message", "")
+            msg_lower = msg.lower()
+            if any(kw.lower() in msg_lower for kw in error_keywords):
+                patterns.append({
+                    "sha": commit["sha"][:8],
+                    "message": msg.split("\n")[0][:200],
+                    "author": commit.get("commit", {}).get("author", {}).get("name", ""),
+                    "date": commit.get("commit", {}).get("author", {}).get("date", ""),
+                    "url": commit.get("html_url", ""),
+                })
+    return patterns[:10]
+
+
+def _issues_to_alerts(
+    issues: list[dict], owner: str, repo: str,
+) -> list[dict]:
+    """Convert GitHub issues into PagerDuty-style alert payloads."""
+    alerts = []
+    for issue in issues:
+        title = issue.get("title", "Unknown issue")
+        body_text = issue.get("body", "") or ""
+        labels = [l.get("name", "") for l in issue.get("labels", [])]
+
+        # Infer error class from title/labels
+        error_class = "RuntimeError"
+        title_lower = title.lower()
+        if "typeerror" in title_lower:
+            error_class = "TypeError"
+        elif "null" in title_lower or "undefined" in title_lower:
+            error_class = "TypeError"
+        elif "memory" in title_lower or "oom" in title_lower:
+            error_class = "OOMKilled"
+        elif "timeout" in title_lower or "latency" in title_lower or "slow" in title_lower:
+            error_class = "LatencySpike"
+        elif "crash" in title_lower or "segfault" in title_lower:
+            error_class = "CrashError"
+        elif "import" in title_lower or "module" in title_lower:
+            error_class = "ImportError"
+        elif any(l in ["infrastructure", "infra", "ops", "platform"] for l in labels):
+            error_class = "InfrastructureError"
+
+        # Extract stack trace from issue body if present
+        stack_trace = None
+        if "```" in body_text:
+            # Try to extract code blocks as potential stack traces
+            parts = body_text.split("```")
+            for i in range(1, len(parts), 2):
+                block = parts[i].strip()
+                if block.startswith(("Traceback", "Error", "at ", "TypeError", "  File")):
+                    stack_trace = block[:1000]
+                    break
+                if len(block) > 50:
+                    stack_trace = block[:1000]
+
+        alerts.append({
+            "event": {
+                "event_type": "incident.triggered",
+                "data": {
+                    "id": f"gh-{owner}-{repo}-{issue['number']}",
+                    "title": title,
+                    "urgency": "high",
+                    "service": {"name": repo},
+                    "body": {
+                        "details": {
+                            "error_class": error_class,
+                            "error_message": title,
+                            "stack_trace": stack_trace or f"GitHub Issue #{issue['number']}: {body_text[:500]}",
+                            "github_issue_url": issue.get("html_url", ""),
+                            "github_issue_number": issue["number"],
+                        }
+                    },
+                },
+            }
+        })
+    return alerts
+
+
+def _commits_to_alerts(
+    patterns: list[dict], owner: str, repo: str,
+) -> list[dict]:
+    """Convert error-related commits into alert payloads."""
+    alerts = []
+    for p in patterns:
+        msg = p["message"]
+        error_class = "RuntimeError"
+        msg_lower = msg.lower()
+        if "typeerror" in msg_lower or "null" in msg_lower:
+            error_class = "TypeError"
+        elif "memory" in msg_lower or "oom" in msg_lower:
+            error_class = "OOMKilled"
+        elif "timeout" in msg_lower or "latency" in msg_lower:
+            error_class = "LatencySpike"
+
+        alerts.append({
+            "event": {
+                "event_type": "incident.triggered",
+                "data": {
+                    "id": f"gh-commit-{p['sha']}",
+                    "title": f"Error pattern in commit {p['sha']}: {msg}",
+                    "urgency": "high",
+                    "service": {"name": repo},
+                    "body": {
+                        "details": {
+                            "error_class": error_class,
+                            "error_message": msg,
+                            "commit_sha": p["sha"],
+                            "commit_url": p.get("url", ""),
+                        }
+                    },
+                },
+            }
+        })
+    return alerts
+
+
+@router.post("/scan-repo")
+async def scan_repository(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    body: ScanRepoRequest,
+) -> dict:
+    """Scan a GitHub repository for real bugs and feed them through the pipeline.
+
+    Discovers issues from:
+    1. Open GitHub issues labeled 'bug'
+    2. Recent commits with error-related messages
+    Each discovered issue becomes a real alert flowing through triage -> dispatch -> fix.
+    """
+    from app.api.webhooks import get_dispatcher
+    from app.webhooks.normalizers import normalize_pagerduty
+
+    # Parse repo URL
+    repo_url = body.repo_url.rstrip("/")
+    parts = repo_url.replace("https://github.com/", "").replace("http://github.com/", "").split("/")
+    if len(parts) < 2:
+        return {"error": "Invalid repo URL. Expected format: https://github.com/owner/repo"}
+    owner, repo = parts[0], parts[1]
+
+    token = settings.github_token or ""
+
+    # Fetch issues and error patterns in parallel
+    issues, patterns = await asyncio.gather(
+        _fetch_github_issues(owner, repo, token, body.max_issues),
+        _fetch_error_patterns(owner, repo, token),
+    )
+
+    if not issues and not patterns:
+        return {"error": f"No issues or error patterns found in {owner}/{repo}. The repo may be private (set GITHUB_TOKEN in .env)."}
+
+    # Convert to alert payloads
+    alert_payloads = _issues_to_alerts(issues, owner, repo)
+    if not alert_payloads:
+        alert_payloads = _commits_to_alerts(patterns[:body.max_issues], owner, repo)
+
+    # Process each alert through the pipeline
+    dispatcher = get_dispatcher(request)
+    results = []
+    for payload in alert_payloads:
+        try:
+            alert = normalize_pagerduty(payload)
+            result = await dispatcher.handle_alert(alert)
+            if result.get("action") == "dispatched_to_devin":
+                investigation_id = result["investigation_id"]
+                background_tasks.add_task(dispatcher.monitor_session, investigation_id)
+            results.append(result)
+        except Exception as e:
+            logger.error(f"Failed to process scanned issue: {e}")
+            results.append({"error": str(e)})
+        # Small delay between alerts for visual effect on dashboard
+        await asyncio.sleep(0.5)
+
+    return {
+        "repo": f"{owner}/{repo}",
+        "issues_found": len(issues),
+        "error_commits_found": len(patterns),
+        "alerts_created": len(alert_payloads),
+        "results": results,
+    }
+
+
+@router.get("/scan-repo/preview")
+async def preview_scan(repo_url: str = "https://github.com/t1mchee/payment-service") -> dict:
+    """Preview what a scan would find without triggering the pipeline."""
+    repo_url = repo_url.rstrip("/")
+    parts = repo_url.replace("https://github.com/", "").replace("http://github.com/", "").split("/")
+    if len(parts) < 2:
+        return {"error": "Invalid repo URL"}
+    owner, repo = parts[0], parts[1]
+
+    token = settings.github_token or ""
+
+    issues, patterns = await asyncio.gather(
+        _fetch_github_issues(owner, repo, token, 10),
+        _fetch_error_patterns(owner, repo, token),
+    )
+
+    return {
+        "repo": f"{owner}/{repo}",
+        "issues": [{"number": i["number"], "title": i["title"], "labels": [l["name"] for l in i.get("labels", [])]} for i in issues],
+        "error_commits": patterns,
+    }
 
 
 # ---------------------------------------------------------------------------
