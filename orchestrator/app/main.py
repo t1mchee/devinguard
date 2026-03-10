@@ -8,18 +8,25 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.api.dashboard import router as dashboard_router
+from app.api.webhooks import reset_dispatcher
 from app.api.webhooks import router as webhooks_router
 from app.config import settings
+from app.events.feed import activity_feed
 from app.metrics.store import MetricsStore
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Initialize and clean up application resources."""
-    # Initialize metrics store
+    # Initialize metrics store and reset for fresh demo state
     metrics_store = MetricsStore()
     await metrics_store.initialize()
+    await metrics_store.reset()
     app.state.metrics_store = metrics_store
+
+    # Clear activity feed and dispatcher from previous runs
+    activity_feed.clear()
+    reset_dispatcher()
 
     # Initialize OpenAI client if key is configured
     openai_client = None

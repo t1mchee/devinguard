@@ -319,6 +319,15 @@ class MetricsStore:
 
         return [dict(row) for row in rows]
 
+    async def reset(self) -> None:
+        """Clear all data from the metrics store (used on server startup for demo)."""
+        if not self._conn:
+            return
+        self._conn.execute("DELETE FROM investigations")
+        self._conn.execute("DELETE FROM alert_counts")
+        self._conn.commit()
+        logger.info("Metrics store reset — all investigations and alert counts cleared")
+
     async def close(self) -> None:
         if self._conn:
             self._conn.close()

@@ -64,6 +64,10 @@ class ActivityFeed:
         if q in self._subscribers:
             self._subscribers.remove(q)
 
+    def clear(self) -> None:
+        """Clear all events (used on server startup for demo reset)."""
+        self._events.clear()
+
 
 # Global singleton — imported by dispatcher and API
 activity_feed = ActivityFeed()

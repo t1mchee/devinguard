@@ -26,6 +26,12 @@ router = APIRouter(tags=["webhooks"])
 _dispatcher: Optional[InvestigationDispatcher] = None
 
 
+def reset_dispatcher() -> None:
+    """Reset the dispatcher singleton (used on server startup for fresh demo state)."""
+    global _dispatcher
+    _dispatcher = None
+
+
 def get_dispatcher(request: Optional[Request] = None) -> InvestigationDispatcher:
     global _dispatcher
     if _dispatcher is None:
