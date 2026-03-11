@@ -167,21 +167,14 @@ def _rule_based_classify(alert: AlertEvent) -> Optional[TriageResult]:
 
     Returns a TriageResult if a rule matches, None if the alert is ambiguous.
     """
-    # Fast-path: alerts from our code scanner have confirmed file locations.
-    # These are always CODE_LEVEL and should be dispatched to Devin.
+    # Scanner-sourced alerts have confirmed file locations.
+    # Check if this is a scanner finding before applying infra/code patterns.
     raw_details = (alert.raw_payload.get("event", {}).get("data", {})
                    .get("body", {}).get("details", {}))
-    if isinstance(raw_details, dict) and raw_details.get("source") in (
-        "code_marker", "pattern_match", "code_analysis",
-    ):
-        file_loc = raw_details.get("file", "")
-        line_loc = raw_details.get("line", "")
-        return TriageResult(
-            classification="CODE_LEVEL",
-            confidence=0.95,
-            reasoning=f"Code scanner confirmed bug at {file_loc}:{line_loc} — dispatching to Devin",
-            should_dispatch_to_devin=True,
-        )
+    is_scanner_finding = (
+        isinstance(raw_details, dict)
+        and raw_details.get("source") in ("code_marker", "pattern_match", "code_analysis")
+    )
 
     text_to_check = f"{alert.error_class} {alert.error_message} {alert.stack_trace or ''}"
 
@@ -198,6 +191,17 @@ def _rule_based_classify(alert: AlertEvent) -> Optional[TriageResult]:
     # Check code-level patterns
     for pattern, classification, confidence, reasoning in _CODE_PATTERNS:
         if pattern.search(text_to_check):
+            # Scanner findings have confirmed file locations — boost confidence
+            # so they always dispatch to Devin.
+            if is_scanner_finding:
+                file_loc = raw_details.get("file", "")
+                line_loc = raw_details.get("line", "")
+                return TriageResult(
+                    classification="CODE_LEVEL",
+                    confidence=0.95,
+                    reasoning=f"Code scanner confirmed bug at {file_loc}:{line_loc} — {reasoning}",
+                    should_dispatch_to_devin=True,
+                )
             should_dispatch = confidence >= 0.8
             return TriageResult(
                 classification=classification,
@@ -205,6 +209,18 @@ def _rule_based_classify(alert: AlertEvent) -> Optional[TriageResult]:
                 reasoning=reasoning,
                 should_dispatch_to_devin=should_dispatch,
             )
+
+    # Scanner findings that didn't match any pattern — still dispatch to Devin
+    # since the scanner confirmed a bug at that location.
+    if is_scanner_finding:
+        file_loc = raw_details.get("file", "")
+        line_loc = raw_details.get("line", "")
+        return TriageResult(
+            classification="CODE_LEVEL",
+            confidence=0.90,
+            reasoning=f"Code scanner found issue at {file_loc}:{line_loc} — dispatching to Devin",
+            should_dispatch_to_devin=True,
+        )
 
     return None
 
