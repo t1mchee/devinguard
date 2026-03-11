@@ -167,6 +167,22 @@ def _rule_based_classify(alert: AlertEvent) -> Optional[TriageResult]:
 
     Returns a TriageResult if a rule matches, None if the alert is ambiguous.
     """
+    # Fast-path: alerts from our code scanner have confirmed file locations.
+    # These are always CODE_LEVEL and should be dispatched to Devin.
+    raw_details = (alert.raw_payload.get("event", {}).get("data", {})
+                   .get("body", {}).get("details", {}))
+    if isinstance(raw_details, dict) and raw_details.get("source") in (
+        "code_marker", "pattern_match", "code_analysis",
+    ):
+        file_loc = raw_details.get("file", "")
+        line_loc = raw_details.get("line", "")
+        return TriageResult(
+            classification="CODE_LEVEL",
+            confidence=0.95,
+            reasoning=f"Code scanner confirmed bug at {file_loc}:{line_loc} — dispatching to Devin",
+            should_dispatch_to_devin=True,
+        )
+
     text_to_check = f"{alert.error_class} {alert.error_message} {alert.stack_trace or ''}"
 
     # Check infrastructure patterns first (higher priority — we don't want to waste ACUs)
