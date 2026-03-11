@@ -43,6 +43,9 @@ def build_investigation_prompt(
     if alert.stack_trace:
         stack_section = alert.stack_trace
 
+    # Detect if we have file location data (from code scanner)
+    has_file_location = stack_section != "No stack trace available." and "at " in stack_section
+
     # Build the full prompt
     prompt = f"""INCIDENT INVESTIGATION
 ============================
@@ -54,7 +57,7 @@ SEVERITY: {alert.severity}
 ERROR SUMMARY:
 {alert.error_class}: {alert.error_message}
 
-STACK TRACE:
+STACK TRACE / CODE LOCATION:
 {stack_section}
 
 RECENT DEPLOYS (last 48h):
@@ -65,20 +68,20 @@ SENTRY CONTEXT:
 
 INSTRUCTIONS:
 1. Clone the repo and check out the {context.branch} branch.
-2. Navigate to the files referenced in the stack trace and read the surrounding context.
-3. Examine recent commits — prioritize those that correlate with when the error first appeared.
-4. Check for interactions between recent changes
-   (e.g., caching + retry logic, config changes + code paths).
-5. Formulate a root cause hypothesis.
-6. If you can identify the bug with confidence, write a fix.
-7. Run the existing test suite to verify your fix passes.
-8. If tests pass, open a PR with your fix and a detailed root cause description in the PR body.
-   Title format: [INCIDENT-{investigation_id}] Fix: <one-line description>
-9. If you CANNOT identify the issue confidently, document:
-   - What you examined
-   - What you ruled out
-   - What further investigation you recommend
-   DO NOT open a PR if you are uncertain — a wrong fix is worse than no fix.
+2. Navigate to the EXACT file and line referenced above and read the surrounding context.
+3. The code location above was identified by static analysis — the bug IS in that file.
+   Read the file carefully and understand what the bug is.
+4. Write a fix for the identified bug. The fix should be minimal and targeted.
+5. If the repo has tests, run them. If not, verify the fix is syntactically correct.
+6. Open a PR with your fix. Use this title format:
+   [INCIDENT-{investigation_id}] Fix: <one-line description>
+   Include a root cause description in the PR body.
+"""
+    if has_file_location:
+        prompt += """
+IMPORTANT: The file location and code context above come from our scanner.
+The bug has been confirmed to exist at that location. You MUST open a fix PR.
+Do not just document findings — write and submit the actual code fix.
 """
     return prompt
 

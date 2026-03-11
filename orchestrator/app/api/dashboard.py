@@ -810,6 +810,16 @@ def _code_findings_to_alerts(
         if len(display_title) > 120:
             display_title = display_title[:117] + "..."
 
+        # Build a synthetic stack trace from scanner data so the Devin
+        # prompt includes the exact file, line, and surrounding code.
+        stack_parts = [f"    at {file_path}:{line}"]
+        ctx = f.get("context", "")
+        if ctx:
+            stack_parts.append(f"\n--- source context ({file_path}:{line}) ---")
+            stack_parts.append(ctx)
+            stack_parts.append("--- end context ---")
+        stack_trace = "\n".join(stack_parts)
+
         alerts.append({
             "event": {
                 "event_type": "incident.triggered",
@@ -822,6 +832,7 @@ def _code_findings_to_alerts(
                         "details": {
                             "error_class": f["error_class"],
                             "error_message": f.get("description", title),
+                            "stack_trace": stack_trace,
                             "file": file_path,
                             "line": line,
                             "severity": f.get("severity", "medium"),
