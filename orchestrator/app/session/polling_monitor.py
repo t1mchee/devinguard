@@ -16,8 +16,10 @@ from app.session.monitor import SessionMonitor
 logger = logging.getLogger(__name__)
 
 # Session statuses that indicate completion
-_COMPLETE_STATUSES = {"exit"}
+_COMPLETE_STATUSES = {"exit", "stopped"}
 _ERROR_STATUSES = {"error"}
+# "blocked" sessions that already have a pull_request are effectively done
+_BLOCKED_STATUSES = {"running"}  # status field when status_enum is "blocked"
 _TERMINAL_STATUSES = _COMPLETE_STATUSES | _ERROR_STATUSES
 
 
@@ -82,15 +84,22 @@ class PollingSessionMonitor(SessionMonitor):
                     continue
 
                 status = response.get("status", "unknown")
+                status_enum = response.get("status_enum", "")
 
-                if status in _COMPLETE_STATUSES:
-                    logger.info(f"Session {session_id} completed with status: {status}")
+                if status in _COMPLETE_STATUSES or status_enum == "finished":
+                    logger.info(f"Session {session_id} completed with status: {status}/{status_enum}")
                     await on_complete(response)
                     return
 
                 if status in _ERROR_STATUSES:
                     logger.warning(f"Session {session_id} errored with status: {status}")
                     await on_error(response)
+                    return
+
+                # Blocked sessions with a PR are effectively complete
+                if status_enum == "blocked" and response.get("pull_request"):
+                    logger.info(f"Session {session_id} blocked with PR — treating as complete")
+                    await on_complete(response)
                     return
 
                 # Session still running — report progress

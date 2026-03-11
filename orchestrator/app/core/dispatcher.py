@@ -245,10 +245,15 @@ class InvestigationDispatcher:
             investigation.resolved_at = datetime.utcnow()
             investigation.acus_consumed = response.get("acus_consumed", 0)
 
-            prs = response.get("pull_requests", [])
-            if prs:
+            # Devin API returns pull_request (singular dict) not pull_requests
+            pr = response.get("pull_request") or {}
+            prs = response.get("pull_requests") or []
+            if pr and isinstance(pr, dict) and pr.get("url"):
                 investigation.session_outcome = "fix_pr"
-                investigation.pr_url = prs[0].get("pr_url")
+                investigation.pr_url = pr["url"]
+            elif prs:
+                investigation.session_outcome = "fix_pr"
+                investigation.pr_url = prs[0].get("pr_url") or prs[0].get("url")
             else:
                 investigation.session_outcome = "hypothesis"
 
