@@ -1,0 +1,162 @@
+{
+  "summary": {
+    "total_evaluated": 155,
+    "correct": 70,
+    "accuracy": 0.452,
+    "non_ambiguous_count": 79,
+    "decision_accuracy": 0.886,
+    "coverage": 0.51,
+    "total_dispatched_to_devin": 19,
+    "dispatch_precision": 0.684
+  },
+  "per_class": {
+    "CODE_LEVEL": {
+      "true_positives": 28,
+      "false_positives": 7,
+      "false_negatives": 52,
+      "precision": 0.8,
+      "recall": 0.35,
+      "f1": 0.487
+    },
+    "INFRASTRUCTURE": {
+      "true_positives": 42,
+      "false_positives": 2,
+      "false_negatives": 33,
+      "precision": 0.955,
+      "recall": 0.56,
+      "f1": 0.706
+    },
+    "AMBIGUOUS": {
+      "true_positives": 0,
+      "false_positives": 76,
+      "false_negatives": 0,
+      "precision": 0.0,
+      "recall": 0.0,
+      "f1": 0.0
+    }
+  },
+  "repo_breakdown": {
+    "expressjs/express": {
+      "total": 30,
+      "correct": 15,
+      "ambiguous": 13
+    },
+    "fastify/fastify": {
+      "total": 30,
+      "correct": 8,
+      "ambiguous": 22
+    },
+    "pallets/flask": {
+      "total": 20,
+      "correct": 5,
+      "ambiguous": 15
+    },
+    "kubernetes/kubernetes": {
+      "total": 25,
+      "correct": 13,
+      "ambiguous": 10
+    },
+    "docker/compose": {
+      "total": 25,
+      "correct": 13,
+      "ambiguous": 9
+    },
+    "hashicorp/terraform": {
+      "total": 25,
+      "correct": 16,
+      "ambiguous": 7
+    }
+  },
+  "misclassified_examples": [
+    {
+      "repo": "expressjs/express",
+      "issue": 6764,
+      "title": "Problems with npm install in docker",
+      "error_class": "UnknownError",
+      "ground_truth": "CODE_LEVEL",
+      "predicted": "INFRASTRUCTURE",
+      "confidence": 0.8,
+      "reasoning": "Container runtime infrastructure issue"
+    },
+    {
+      "repo": "expressjs/express",
+      "issue": 5936,
+      "title": "[DEPLOY-ERROR] - TypeError: Missing parameter name at 1: htt",
+      "error_class": "TypeError",
+      "ground_truth": "CODE_LEVEL",
+      "predicted": "INFRASTRUCTURE",
+      "confidence": 0.75,
+      "reasoning": "Deployment/rollout infrastructure issue"
+    },
+    {
+      "repo": "kubernetes/kubernetes",
+      "issue": 137347,
+      "title": "DRA: Fix incorrect behavior when using AllocationModeAll wit",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.75,
+      "reasoning": "Incorrect behavior \u2014 logic bug in application code"
+    },
+    {
+      "repo": "kubernetes/kubernetes",
+      "issue": 137397,
+      "title": "client-go: prevent panic in getEventKey when event is nil",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Process crash \u2014 likely code-level bug"
+    },
+    {
+      "repo": "docker/compose",
+      "issue": 13609,
+      "title": "[BUG] Panic on rebuild when using watch --no-up",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Process crash \u2014 likely code-level bug"
+    },
+    {
+      "repo": "docker/compose",
+      "issue": 13559,
+      "title": "[BUG] panic in monitor.Start",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Process crash \u2014 likely code-level bug"
+    },
+    {
+      "repo": "docker/compose",
+      "issue": 13561,
+      "title": "[BUG] Panic when stopping Compose Watch",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Process crash \u2014 likely code-level bug"
+    },
+    {
+      "repo": "hashicorp/terraform",
+      "issue": 38028,
+      "title": "Fix nil pointer dereference in backend state migration",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Null reference \u2014 code-level bug"
+    },
+    {
+      "repo": "hashicorp/terraform",
+      "issue": 38058,
+      "title": "v1.14 backport: Fix nil pointer dereference in backend state",
+      "error_class": "UnknownError",
+      "ground_truth": "INFRASTRUCTURE",
+      "predicted": "CODE_LEVEL",
+      "confidence": 0.8,
+      "reasoning": "Null reference \u2014 code-level bug"
+    }
+  ]
+}
