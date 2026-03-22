@@ -18,6 +18,14 @@ venv/
 # Environment
 .env
 !.env.example
+env
+
+# Demo guide (client-facing, not tracked)
+DevinGuard_Client_Demo_Guide.md
+
+# Eval cache
+orchestrator/scripts/eval_dataset.json
+orchestrator/scripts/eval_results.json
 
 # Testing
 .pytest_cache/
